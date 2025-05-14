@@ -6,10 +6,10 @@ from scipy.stats import lognorm, kstest
 import matplotlib.ticker as mticker
 
 
-def approxLocalDemand(r, n=3, a=0.0012):
+def approxLocalDemand(r, n=3, a=0.0012, alpha=1):
     # simpler approximate form of the distance dependent demand, should be fster to calculate
     # default paramters already a good fit for our data
-    return 1 / ((r * a)**n + 1)
+    return 1 / ((r * a)**(n+alpha) + r**alpha)
 
 
 if __name__ == "__main__":
@@ -105,8 +105,10 @@ if __name__ == "__main__":
 
     # -- Demand plot --------------
     ax_demand.plot(x_line, 1-cdf_logn, lw=2, color="#2ca02c", label="rel. demand = 1 - Log-normal CDF")
+    ax_demand.plot(x_line, (1-cdf_logn)/(x_line**0.05), lw=2, color="#2ca02c", label="rel. demand adjusted for dimeonsionality")
     ax_demand.plot(x_line, 1/((x_line*0.0012)**1 + 1), lw=2, color="blue", linestyle="--", label="approx. as:   $\\frac{1}{r \cdot 0.0012 + 1}$")
-    ax_demand.plot(x_line, 1/((x_line*0.0012)**3 + 1), lw=2, color="red", linestyle="--", label="approx. as:   $\\frac{1}{(r \cdot 0.0012)^3 + 1}$")
+    alpha = 0.4
+    ax_demand.plot(x_line, approxLocalDemand(x_line, alpha=alpha), lw=2, color="red", linestyle="--", label="approx. as:   $\\frac{1}{(r \cdot 0.0012)^{3+\\alpha} + r^\\alpha}, \\alpha=$"+str(alpha))
 
     ax_demand.set_xlabel(f"Distance r / m ")
     ax_demand.set_ylabel("rel. demand")

@@ -9,6 +9,10 @@ import rioxarray
 
 from localDemand import approxLocalDemand
 
+# --- new imports for road‐network overlay
+import osmnx as ox
+import pyproj
+
 
 def spawnDemand(ds, location, demandDistribution, magnitude=1):
     (x_pos, y_pos) = location
@@ -70,20 +74,18 @@ def latlon_to_xy(lat, lon, ref_lat=25.03752, ref_lon=121.56368, radius=6371000.0
 
     return dx, dy
 
+if __name__ == "__main__":
+    useCached = False  # whether to use previously cached grid or recalculate
 
-if __name__ == "__main__": 
-    useCached = False  # whether to use the previously calcluated demand model from memory or recalculate (somewhat slow)
-    
-    if useCached == False:
+    if not useCached:
         # 1. build a 2-D Cartesian field in metres (y, x)  -----------------
         half_sz  = 10_000                      # half-width = 10 km
         
         # set for 100 m grid size
-        nx, ny   = int(half_sz / 50), int(half_sz / 50)   # grid shape (east-west, north-south)
-
-        x_m = np.linspace(-half_sz,  half_sz, nx)    # metres east of centre
-        y_m = np.linspace(-half_sz,  half_sz, ny)    # metres north of centre
-
+        nx, ny   = int(half_sz / 50), int(half_sz / 50)   # grid shape
+        x_m = np.linspace(-half_sz,  half_sz, nx)
+        y_m = np.linspace(-half_sz,  half_sz, ny)
+        
         ds = xr.Dataset(
             data_vars=dict(
                 demand=(["y_m", "x_m"],
@@ -98,28 +100,50 @@ if __name__ == "__main__":
         )
 
         stations = stationData()
-        # stations = stations.head(200)     # limit number of stations for testing
-        
-        for stop_id, lat, lon, trips in tqdm(zip(stations.index, stations["lat"], stations["lon"], stations["totalTrips"]), total=len(stations)):
+        for stop_id, lat, lon, trips in tqdm(zip(stations.index,
+                                                stations["lat"],
+                                                stations["lon"],
+                                                stations["totalTrips"]),
+                                            total=len(stations)):
             (x, y) = latlon_to_xy(lat, lon)
-            # print(stop_id, lat, lon, x, y, trips)
             ds = spawnDemand(ds, (x, y), approxLocalDemand, magnitude=trips)
-        
-        
-        # 4. (unchanged) save & plot ---------------------------------------
-        ds.to_netcdf("demandModel_metreGrid.nc")
-
-    elif useCached == True:
+    else:
         ds = xr.open_dataset("demandModel_metreGrid.nc")
         
+    # --- plot the demand grid + overlay road network
     plt.figure(figsize=(6, 5))
-    
+    ax = plt.gca()
+
+    # base heatmap
     ds.demand.plot(
         cmap="YlOrRd", 
-        #norm=mcolors.LogNorm(vmin=1e1, vmax=ds.demand.max()),
         cbar_kwargs=dict(label="Demand score [–]")
     )
+
+    # overlay Taipei road network
+    # determine search radius from grid extents
+    half_sz = max(abs(ds['x_m'].values).max(), abs(ds['y_m'].values).max())
     
+    # compute geographic centre from station data
+    #from globalDemand import stationData
+    #stations = stationData()
+    #center_lat = stations['lat'].mean()
+    #center_lon = stations['lon'].mean()
+    center_lat = 25.03750
+    center_lon = 121.56444
+    
+    # grab and project the graph
+    G = ox.graph_from_point((center_lat, center_lon), dist=half_sz, network_type='drive')
+    G = ox.project_graph(G)
+    # convert to GeoDataFrame of edges
+    edges = ox.graph_to_gdfs(G, nodes=False)
+    # map centre lon/lat into graph CRS and shift to grid-relative coords
+    proj = pyproj.Proj(G.graph['crs'])
+    center_x, center_y = proj(center_lon, center_lat)
+    edges['geometry'] = edges['geometry'].translate(xoff=-center_x, yoff=-center_y)
+    # draw network on top
+    edges.plot(ax=ax, linewidth=0.5, edgecolor='black', alpha=0.5)
+
     plt.title("Bike-demand kernel (Cartesian metres, Taipei centre)")
     plt.xlabel("Easting x [m]")
     plt.ylabel("Northing y [m]")
