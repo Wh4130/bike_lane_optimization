@@ -19,37 +19,62 @@ def decorator_timer(some_function):
 class Model:
     def __init__(self):
         self.model = gp.Model('BikelaneOptimization')
-        self.model.setParam('OutputFlag', 0)
-        self.model.Params.LogToConsole = 0
+        #self.model.setParam('OutputFlag', 0)
+        #self.model.Params.LogToConsole = 0
         self.verbose = True
         
     @decorator_timer
-    def setup(self, Adjacency, Roads):
+    def setup(self, Intersections, Roads):
         Demand = np.array(Roads["roadDemand_m2_norm"])
         
-        roadIDs = Roads.index
-        print(roadIDs)
+        numberRoadsAllowed = 10
+        
         # set of all roads
-        S_R = roadIDs
+        self.roadIDs = Roads.index #pd.unique(Roads.index.values.ravel()).astype(int)
+        #print(self.roadIDs)
+        self.intersectingRoadIDs = pd.unique(Intersections[['road_i','road_j']].values.ravel()).astype(int)
+        #print(self.intersectingRoadIDs, len(self.intersectingRoadIDs))
+        
+        self.roadIDs              = self.roadIDs.tolist()
+        self.intersectingRoadIDs  = self.intersectingRoadIDs.tolist()
         
         # ========= Decision variables ========================================
         self.print_("Setting up variables...")
-        self.x = self.model.addVars(S_R, name="x", vtype=GRB.BINARY)
-        self.y = self.model.addVars(S_R, S_R, name="y", vtype=GRB.BINARY)
+        self.x = self.model.addVars(self.roadIDs, name="x", vtype=GRB.BINARY)
+        #self.y = self.model.addVars(self.roadIDs, self.roadIDs, name="y", vtype=GRB.BINARY)
+        self.y = self.model.addVars(self.intersectingRoadIDs, self.intersectingRoadIDs, name="y", vtype=GRB.BINARY)
         
         
         # ========= Objective function ========================================
         self.print_("Setting up objective function...")
+        
         roadUtility = gp.quicksum(
             Roads.loc[i, "roadDemand_m2_norm"] * self.x[i]
-            for i in S_R
+            for i in self.roadIDs
         )
         
-        self.model.setObjective(roadUtility, GRB.MAXIMIZE)
+        intersectionUtility = gp.quicksum(
+            demandNorm * self.y[r_i, r_j]
+            for r_i, r_j, demandNorm in Intersections[
+                ['road_i','road_j','intersection_demand_norm']
+            ].itertuples(index=False, name=None)
+        )
+        
+        
+        self.model.setObjective(roadUtility + intersectionUtility, GRB.MAXIMIZE)
         
         # ========= Constraints ===============================================
         self.print_("Setting up constraints...")
-        self.model.addConstr(gp.quicksum(1 * self.x[i] for i in S_R) <= 4, name="totalCost")  # simple contraint for testing: only build 4 roads
+        
+        # Construction cost constraint
+        self.model.addConstr(gp.quicksum(1 * self.x[i] for i in self.roadIDs) <= numberRoadsAllowed, name="totalCost")  # simple contraint for testing: only build 4 roads
+        
+        # linking of y to x
+        for i in self.intersectingRoadIDs:
+            for j in self.intersectingRoadIDs:
+                self.model.addConstr(self.y[i, j] >= self.x[i] + self.x[j] - 1, name="")
+                self.model.addConstr(self.y[i, j] <= self.x[i], name="")
+                self.model.addConstr(self.y[i, j] <= self.x[j], name="")
         
     
     @decorator_timer  
@@ -61,13 +86,23 @@ class Model:
 
         # Print the solution
         if self.model.status == GRB.OPTIMAL:
-            pass
-            #print(self.x)
+            self.print_("Optimization successfull")
+            #pass
+            x_sol = np.array([self.x[i].X for i in self.roadIDs])
+            y_sol = np.array([[self.y[j, i].X for i in self.intersectingRoadIDs] for j in self.intersectingRoadIDs])
+            print(x_sol)
+            print(y_sol)
+            
+            print(np.sum(x_sol), np.sum(y_sol))
             
     
     def print_(self, message):
         if self.verbose:
             print(message)
+            
+    def plot():
+        pass
+        # call function from Nick
     
 
 
@@ -109,13 +144,21 @@ if __name__ == "__main__":
     # demands = np.random.rand(len(edge_ids))
     
     # Roads = pd.DataFrame({'demand': demands}, index=edge_ids)
-    Roads = pd.read_parquet("../data/processed/road_data.parquet")
+    # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
+    Roads = pd.read_parquet("../data/processed/road_data.parquet").head(2000)
+    Roads.set_index('roadID', inplace=True)
+    A = pd.read_parquet("../data/processed/adjacency_demand.parquet")
     
-    print(Roads.head())
+    #print(A.head())
     
+    # filter to only consider adjacency of roads in the Roads set
+    A = A[
+        A["road_i"].isin(Roads.index) 
+        & A["road_j"].isin(Roads.index)
+    ]
     
     M = Model()
-    print(M.setup(None, Roads))
+    print(M.setup(A, Roads))
     print(M.optimize())
 
     
