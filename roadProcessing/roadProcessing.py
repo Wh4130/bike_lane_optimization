@@ -48,13 +48,13 @@ if __name__ == "__main__":
         # * Danger/Demand Calculation Method 2: calculate several points over the road segment and average it
         road_points = get_line_sample_points(row['geometry'].exterior)
         demand = 0
-        danger = 0
+        danger = []
         for point in road_points:
             x, y   = latlon_to_xy(point.y, point.x)
             demand += ds_DemandGrid['demand'].sel(x_m = x, y_m = y, method='nearest').values
-            danger += ds_DangerGrid['accident'].sel(x_m = x, y_m = y, method='nearest').values
+            danger.append(ds_DangerGrid['accident'].sel(x_m = x, y_m = y, method='nearest').values)
         demand /= len(road_points)
-        danger /= len(road_points)
+        danger =  max(danger)
 
         df_Road.loc[idx, :] = [
             idx + 1,
@@ -78,6 +78,7 @@ if __name__ == "__main__":
     gdf_Road['centroid'] = gdf_Road['centroid'].apply(lambda p: p.wkt)
     gdf_Road['roadDemand'] = gdf_Road['roadDemand'].apply(lambda x: x.item() if hasattr(x, "item") else x)
     gdf_Road['danger'] = gdf_Road['danger'].apply(lambda x: x.item() if hasattr(x, "item") else x)
+    gdf_Road['danger_m2'] = gdf_Road['danger_m2'].apply(lambda x: x.item() if hasattr(x, "item") else x)
 
 
     gdf_Road.to_parquet("./data/processed/road_data.parquet")
