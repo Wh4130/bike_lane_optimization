@@ -9,6 +9,14 @@ import os
 import pandas as pd
 from matplotlib.colors import PowerNorm
 
+"""
+This file creates the grid dataset of the degree of danger in Taipei city.
+
+The degree of danger of each grid is measured by the frequency of car accidents in 2024 (113 in ROC calender year).
+
+The result is a .nc file, which is a prerequisite for the calculation of danger in road_data
+"""
+
 if __name__ == "__main__":
     # Ensure output directory exists
     os.makedirs("roadProcessing/output", exist_ok=True)
