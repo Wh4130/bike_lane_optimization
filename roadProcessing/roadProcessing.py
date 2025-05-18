@@ -70,8 +70,10 @@ if __name__ == "__main__":
             danger
         ]
 
-    df_Road['roadDemand_m2_norm'] = 3 + (df_Road['roadDemand_m2'] - df_Road['roadDemand_m2'].mean()) / df_Road['roadDemand'].std()
-    df_Road['danger_m2_norm'] = 3 + (df_Road['danger_m2'] - df_Road['danger_m2'].mean()) / df_Road['danger'].std()
+    # * Normalization
+    df_Road['roadDemand_m2_norm'] = 3 + (df_Road['roadDemand_m2'] - df_Road['roadDemand_m2'].mean()) / df_Road['roadDemand_m2'].std()
+    df_Road['danger_m2_norm'] = 3 + (df_Road['danger_m2'] - df_Road['danger_m2'].mean()) / df_Road['danger_m2'].std()
+    df_Road['length_norm'] = 3 + (df_Road['length'] - df_Road['length'].mean()) / df_Road['length'].std()
 
     df_Road.dropna(subset=["roadID_foreign"])
     gdf_Road = gpd.GeoDataFrame(df_Road, geometry = 'geometry', crs = 'EPSG:4326')
