@@ -148,6 +148,8 @@ def main():
     lambda v: v.item() if hasattr(v, "item") else v
 )
     
+    gdf_adj.fillna({"intersection_demand_norm": 3}, inplace = True)
+    
     if args.buffer:
         gdf_adj.to_parquet("./data/processed/adjacency_demand_buffered.parquet")
     else:
