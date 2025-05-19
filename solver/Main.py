@@ -19,7 +19,7 @@ def parse_args():
     )
     parser.add_argument(
         "--scale", type = str, choices = ["small", "medium", "large"],
-        default = "medium",
+        default = "large",
         help = "scale of the model (the number of decision variables)"
     )
     parser.add_argument(
@@ -137,10 +137,12 @@ class Model:
             # print(x_sol)
             # print(y_sol)
             
-            # print_(np.sum(x_sol), np.sum(y_sol))
+            self.print_("sum fo x:"+str(np.sum(x_sol))+"sum of y:"+str(np.sum(y_sol)))
+            print("intersections per road = ", np.sum(y_sol) / np.sum(x_sol))
+            
+            
             return {"x": x_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
             
-            print("intersections per road = ", np.sum(y_sol) / np.sum(x_sol))
             
     
     def print_(self, message):

@@ -24,12 +24,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "./data/processed/road_data_adj_count_usage.parquet",
+        default = "../data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "./data/processed/adjacency_demand_buffered.parquet",
+        default = "../data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
@@ -233,9 +233,15 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    Roads = gpd.read_parquet(args.road_data)
+    print(args.road_data[1:])
+    try:
+        Roads = gpd.read_parquet(args.road_data)
+        A = gpd.read_parquet(args.adj_mat)
+    except:
+        Roads = gpd.read_parquet(args.road_data)
+        A = gpd.read_parquet(args.adj_mat)
+        
     Roads.set_index('roadID', inplace=True)
-    A = gpd.read_parquet(args.adj_mat)
     print(len(A))
 
     # * filter the data by argument option "scale"
@@ -258,7 +264,4 @@ if __name__ == "__main__":
     M.setup(A, Roads, args)
     result = M.optimize()
     M.save_result(time_spent = result[1])
-
-    
-    
 
