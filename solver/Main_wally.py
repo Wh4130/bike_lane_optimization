@@ -112,7 +112,7 @@ class Model:
         self.print_("Setting up objective function...")
         
         roadUtility = gp.quicksum(
-            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + 3 * self.x2[i])
+            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + Roads.loc[i, "danger_m2_norm"] * self.x2[i])
             for i in self.roadIDs
         )
         
@@ -175,8 +175,8 @@ class Model:
                         y_sol_idx.append((i, j))
 
             
-            # print(x_sol)
-            # print(y_sol)
+            print(len(x1_sol_idx))
+            print(len(x2_sol_idx))
             
             print(np.sum(x1_sol), np.sum(y_sol))
             self.result = {"x1": x1_sol_idx,"x2": x2_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
@@ -185,9 +185,10 @@ class Model:
     def save_result(self, time_spent):
         # * making directory
         if self.args.exp_name != "default":
-            os.makedirs(f"solver/output/{self.args.exp_name}", exist_ok = True)
+            name = self.args.exp_name
         else:
-            os.makedirs(f'solver/output/{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', exist_ok = True)
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        os.makedirs(f"solver/output/{name}", exist_ok = True)
 
         assert self.result != {}, "please run optimization first so there would be result to save."
 
@@ -200,7 +201,7 @@ class Model:
 
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
-        result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
+        result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -214,7 +215,7 @@ class Model:
             "cal_time_sec": time_spent
         }
 
-        with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
+        with open(f"solver/output/{name}/meta_data.json", "w") as file:
             json.dump(meta, file, ensure_ascii = False, indent = True)
 
 
