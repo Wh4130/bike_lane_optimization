@@ -2,9 +2,14 @@
  "hyperparams": {
   "mu": 0.2,
   "alpha": 0.2,
-  "B_L": 1000,
-  "scale": "large"
+  "B_L": 50000.0,
+  "w": 2.999,
+  "scale": "small"
  },
- "obj_val": 2468.6666927968113,
- "cal_time_sec": 9.768355131149292
+ "obj_val": 2995.670189723124,
+ "cal_time_sec": 1.4182121753692627,
+ "result_description": {
+  "num_x1": 631,
+  "num_x2": 24
+ }
 }
