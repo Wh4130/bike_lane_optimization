@@ -26,7 +26,10 @@ class Model:
     @decorator_timer
     def setup(self, Intersections, Roads):
         numberRoadsAllowed = 20
-        self.mu = 1
+        
+        # 0: prioritize adjacent roads
+        # 1: focus on individual roadas
+        self.mu = 0
         
         # set of all roads
         self.roadIDs = Roads.index #pd.unique(Roads.index.values.ravel()).astype(int)
@@ -101,7 +104,8 @@ class Model:
             # print(x_sol)
             # print(y_sol)
             
-            print(np.sum(x_sol), np.sum(y_sol))
+            # print_(np.sum(x_sol), np.sum(y_sol))
+            print("intersections per road = ", np.sum(y_sol) / np.sum(x_sol))
             
     
     def print_(self, message):
