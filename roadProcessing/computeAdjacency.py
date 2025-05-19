@@ -9,9 +9,26 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from tqdm import tqdm
+import argparse
 
+# * arguments parser
+def parse_args():
+    parser = argparse.ArgumentParser()
 
-if __name__ == "__main__":
+    parser.add_argument(
+        "--buffer", action="store_true", required=False,
+        help="whether buffer the border of the POLYGON of each road while calculating the adjacency"
+    )
+    parser.add_argument(
+        "--buffer_scale", type=float, required=False, default=0.00005,
+        help="the scale of buffering"
+    )
+    args = parser.parse_args()
+    return args
+
+def main():
+    args = parse_args()
+
     # * Load in data
     gdf_road = gpd.read_parquet("data/processed/road_data.parquet")
     gdf_road = gdf_road.reset_index(drop=True)
@@ -25,6 +42,10 @@ if __name__ == "__main__":
         geom_i     = row_i['geometry']
         road_idx_i = row_i['roadID']
 
+        # * If buffering required, then select the index based on buffered geometry
+        if args.buffer:
+            geom_i = geom_i.buffer(args.buffer_scale)
+
         # Spatial filter using sindex
         candidate_idxs = list(gdf_road.sindex.intersection(geom_i.bounds))
 
@@ -36,8 +57,13 @@ if __name__ == "__main__":
             if j not in candidate_idxs:
                 continue  
 
+
             geom_j     = gdf_road.loc[j, 'geometry']
             road_idx_j = gdf_road.loc[j, 'roadID']
+
+            # * If buffering required, then buffer the geometry of road j as well
+            if args.buffer:
+                geom_j = geom_j.buffer(args.buffer_scale)
 
             if geom_i.intersects(geom_j):
                 inter_geom = geom_i.intersection(geom_j)
@@ -121,4 +147,14 @@ if __name__ == "__main__":
     gdf_adj['intersection_demand'] = gdf_adj['intersection_demand'].apply(
     lambda v: v.item() if hasattr(v, "item") else v
 )
-    gdf_adj.to_parquet("./data/processed/adjacency_demand.parquet")
+    
+    gdf_adj.fillna({"intersection_demand_norm": 3}, inplace = True)
+    
+    if args.buffer:
+        gdf_adj.to_parquet("./data/processed/adjacency_demand_buffered.parquet")
+    else:
+        gdf_adj.to_parquet("./data/processed/adjacency_demand.parquet")
+
+
+if __name__ == "__main__":
+    main()

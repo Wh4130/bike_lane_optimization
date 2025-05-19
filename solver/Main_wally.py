@@ -4,6 +4,21 @@ import numpy as np
 import pandas as pd
 import argparse
 import matplotlib.pyplot as plt
+import geopandas as gpd
+import os
+import json
+from datetime import datetime
+
+"""
+What's different from Main.py?
+1. Newest objective function and constraints on overleaf
+2. Added arguments parser
+3. Defined the structure of output folder already (one parquet file with road solution details, and another json file for meta data and objective value)
+4. Customizable parameters
+
+What's missing still?
+1. The second constraint (minimum coverage)
+"""
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -23,8 +38,28 @@ def parse_args():
         help = "scale of the model (the number of decision variables)"
     )
     parser.add_argument(
+        "--alpha", type = float,
+        default = 0.2,
+        help = "parameter alpha (importance of road length over road cycling demand)"
+    )
+    parser.add_argument(
+        "--mu", type = float,
+        default = 0.2,
+        help = "parameter mu (importance of total road utility over adjacency utility)"
+    )
+    parser.add_argument(
+        "--B_length", type = float,
+        default = 1000,
+        help = "parameter B^L (budget constraint RHS by meter)"
+    )
+    parser.add_argument(
         "--log", action = "store_true",
         help = "show log to console"
+    )
+    parser.add_argument(
+        "--exp_name", type = str, 
+        default = "default",
+        help = "the name of the experiment"
     )
     args = parser.parse_args()
     return args
@@ -41,23 +76,24 @@ def decorator_timer(some_function):
 
 
 class Model:
-    def __init__(self):
+    def __init__(self, args):
         self.model = gp.Model('BikelaneOptimization')
         self.model.setParam('OutputFlag', 0)
-        if not args.log:
+        self.args = args
+        if not self.args.log:
             self.model.Params.LogToConsole = 0
         self.verbose = True
+        self.result = {}
         
     @decorator_timer
-    def setup(self, Intersections, Roads):
-        numberRoadsAllowed = 20
-        self.mu = 0.7
+    def setup(self, Intersections, Roads, args):
+        self.Roads = Roads
+        self.mu    = args.mu
+        self.alpha = args.alpha
+        self.B_L   = args.B_length
         
-        # set of all roads
-        self.roadIDs = Roads.index #pd.unique(Roads.index.values.ravel()).astype(int)
-        #print(self.roadIDs)
-        # self.intersectingRoadIDs = pd.unique(Intersections[['road_i','road_j']].values.ravel()).astype(int)
-        #print(self.intersectingRoadIDs, len(self.intersectingRoadIDs))
+        # set of all roads and intersections
+        self.roadIDs = Roads.index 
         self.Intersections = Intersections
         
         self.roadIDs              = self.roadIDs.tolist()
@@ -66,7 +102,8 @@ class Model:
         
         # ========= Decision variables ========================================
         self.print_("Setting up variables...")
-        self.x = self.model.addVars(self.roadIDs, name="x", vtype=GRB.BINARY)
+        self.x1 = self.model.addVars(self.roadIDs, name="x1", vtype=GRB.BINARY)
+        self.x2 = self.model.addVars(self.roadIDs, name="x2", vtype=GRB.BINARY)
         
         self.y = self.model.addVars(list(Intersections[['road_i','road_j']].itertuples(index=False, name=None)), name="y", vtype=GRB.BINARY)
             
@@ -75,7 +112,7 @@ class Model:
         self.print_("Setting up objective function...")
         
         roadUtility = gp.quicksum(
-            Roads.loc[i, "roadDemand_m2_norm"] * self.x[i]
+            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + 3 * self.x2[i])
             for i in self.roadIDs
         )
         
@@ -93,13 +130,13 @@ class Model:
         self.print_("Setting up constraints...")
         
         # Construction cost constraint
-        self.model.addConstr(gp.quicksum(1 * self.x[i] for i in self.roadIDs) <= numberRoadsAllowed, name="totalCost")  # simple contraint for testing: only build 4 roads
+        self.model.addConstr(gp.quicksum(((1 * self.x1[i] + 3 * self.x2[i]) * Roads.loc[i, "length_norm"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
         
         # linking of y to x              
         for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None):
-            self.model.addConstr(self.y[i, j] >= self.x[i] + self.x[j] - 1, name="")
-            self.model.addConstr(self.y[i, j] <= self.x[i], name="")
-            self.model.addConstr(self.y[i, j] <= self.x[j], name="")
+            # self.model.addConstr(self.y[i, j] >= self.x[i] + self.x[j] - 1, name="")
+            self.model.addConstr(self.y[i, j] <= self.x1[i] + self.x2[i], name="")
+            self.model.addConstr(self.y[i, j] <= self.x1[j] + self.x2[j], name="")
         
     
     @decorator_timer  
@@ -113,7 +150,8 @@ class Model:
         if self.model.status == GRB.OPTIMAL:
             self.print_("Optimization successfull")
 
-            x_sol = np.array([self.x[i].X for i in self.roadIDs])
+            x1_sol = np.array([self.x1[i].X for i in self.roadIDs])
+            x2_sol = np.array([self.x2[i].X for i in self.roadIDs])
 
             y_sol = np.array([
                 [
@@ -123,12 +161,15 @@ class Model:
                 for j in self.roadIDs
             ])
 
-            x_sol_idx = []
+            x1_sol_idx = []
+            x2_sol_idx = []
             y_sol_idx = []
 
             for i in self.roadIDs:
-                if self.x[i].X > 0:
-                    x_sol_idx.append(i)
+                if self.x1[i].X > 0:
+                    x1_sol_idx.append(i)
+                if self.x2[i].X > 0:
+                    x2_sol_idx.append(i)
                 for j in self.roadIDs:
                     if (i, j) in self.y and self.y[i, j].X > 0:
                         y_sol_idx.append((i, j))
@@ -137,12 +178,46 @@ class Model:
             # print(x_sol)
             # print(y_sol)
             
-            # print_(np.sum(x_sol), np.sum(y_sol))
-            return {"x": x_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
+            print(np.sum(x1_sol), np.sum(y_sol))
+            self.result = {"x1": x1_sol_idx,"x2": x2_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
             
-            print("intersections per road = ", np.sum(y_sol) / np.sum(x_sol))
             
-    
+    def save_result(self, time_spent):
+        # * making directory
+        if self.args.exp_name != "default":
+            os.makedirs(f"solver/output/{self.args.exp_name}", exist_ok = True)
+        else:
+            os.makedirs(f'solver/output/{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', exist_ok = True)
+
+        assert self.result != {}, "please run optimization first so there would be result to save."
+
+        # * saving solution of roads
+        x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+        x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+
+        x1_df_merged = pd.merge(x1_df, Roads, how = 'left', on = 'roadID')
+        x2_df_merged = pd.merge(x2_df, Roads, how = 'left', on = 'roadID')
+
+        result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+        result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
+        result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
+
+        # * saving hyperparameter, objective value, and time cost
+        meta = {
+            "hyperparams": {
+                "mu": self.mu,
+                "alpha": self.alpha,
+                "B_L": self.B_L,
+                "scale": self.args.scale
+            },
+            "obj_val": self.result['obj_val'],
+            "cal_time_sec": time_spent
+        }
+
+        with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
+            json.dump(meta, file, ensure_ascii = False, indent = True)
+
+
     def print_(self, message):
         if self.verbose:
             print(message)
@@ -158,9 +233,9 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    Roads = pd.read_parquet(args.road_data)
+    Roads = gpd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
-    A = pd.read_parquet(args.adj_mat)
+    A = gpd.read_parquet(args.adj_mat)
 
     # * filter the data by argument option "scale"
     if args.scale == "small":
@@ -178,9 +253,10 @@ if __name__ == "__main__":
         & A["road_j"].isin(Roads.index)
     ]
     
-    M = Model()
-    M.setup(A, Roads)
-    print(M.optimize())
+    M = Model(args = args)
+    M.setup(A, Roads, args)
+    result = M.optimize()
+    M.save_result(time_spent = result[1])
 
     
     
