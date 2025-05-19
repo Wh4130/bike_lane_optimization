@@ -9,12 +9,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "./data/processed/road_data_adj_count_usage.parquet",
+        default = "../data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "./data/processed/adjacency_demand_buffered.parquet",
+        default = "../data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
@@ -161,6 +161,7 @@ if __name__ == "__main__":
     Roads = pd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
     A = pd.read_parquet(args.adj_mat)
+    print(len(A))
 
     # * filter the data by argument option "scale"
     if args.scale == "small":
