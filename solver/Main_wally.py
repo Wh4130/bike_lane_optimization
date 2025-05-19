@@ -236,6 +236,7 @@ if __name__ == "__main__":
     Roads = gpd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
     A = gpd.read_parquet(args.adj_mat)
+    print(len(A))
 
     # * filter the data by argument option "scale"
     if args.scale == "small":
