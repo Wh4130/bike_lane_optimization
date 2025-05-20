@@ -4,10 +4,12 @@ import numpy as np
 import pandas as pd
 import argparse
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 import geopandas as gpd
 import os
 import json
 from datetime import datetime
+from utils import *
 
 """
 What's different from Main.py?
@@ -33,6 +35,11 @@ def parse_args():
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
+        "--mrt", type = str,
+        default = "./data/processed/mrt_stations.parquet",
+        help = "full data path to the mrt station data"
+    )
+    parser.add_argument(
         "--scale", type = str, choices = ["small", "medium", "large"],
         default = "medium",
         help = "scale of the model (the number of decision variables)"
@@ -43,6 +50,11 @@ def parse_args():
         help = "parameter alpha (importance of road length over road cycling demand)"
     )
     parser.add_argument(
+        "--tau", type = float,
+        default = 100,
+        help = "parameter tau (threshold of MRT station coverage radius)"
+    )
+    parser.add_argument(
         "--mu", type = float,
         default = 0.2,
         help = "parameter mu (importance of total road utility over adjacency utility)"
@@ -51,6 +63,11 @@ def parse_args():
         "--B_length", type = float,
         default = 1000,
         help = "parameter B^L (budget constraint RHS by meter)"
+    )
+    parser.add_argument(
+        "--w", type = float,
+        default = 2.5,
+        help = "parameter w (relative cost of type 2 over type 1)"
     )
     parser.add_argument(
         "--log", action = "store_true",
@@ -86,11 +103,13 @@ class Model:
         self.result = {}
         
     @decorator_timer
-    def setup(self, Intersections, Roads, args):
+    def setup(self, Intersections, Roads, MRTs, args):
         self.Roads = Roads
         self.mu    = args.mu
         self.alpha = args.alpha
         self.B_L   = args.B_length
+        self.w     = args.w
+        self.tau   = args.tau
         
         # set of all roads and intersections
         self.roadIDs = Roads.index 
@@ -130,13 +149,35 @@ class Model:
         self.print_("Setting up constraints...")
         
         # Construction cost constraint
-        self.model.addConstr(gp.quicksum(((1 * self.x1[i] + 3 * self.x2[i]) * Roads.loc[i, "length_norm"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
+        self.model.addConstr(gp.quicksum(((1 * self.x1[i] + self.w * self.x2[i]) * Roads.loc[i, "length"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
         
         # linking of y to x              
         for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None):
             # self.model.addConstr(self.y[i, j] >= self.x[i] + self.x[j] - 1, name="")
             self.model.addConstr(self.y[i, j] <= self.x1[i] + self.x2[i], name="")
             self.model.addConstr(self.y[i, j] <= self.x1[j] + self.x2[j], name="")
+
+        # at most one level to be built
+        for i in self.roadIDs:
+            self.model.addConstr(self.x1[i] + self.x2[i] <= 1, name="")
+
+        # area coverage constraint
+        Roads_trs = proj_to_xy(Roads, "road")
+        MRT_trs   = proj_to_xy(MRTs, "other")
+        qs = []
+        print("Adding area coverage constraint...")
+        for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
+            potential_xi_for_q = []
+            for roadID in self.roadIDs:
+                dist = euclidean_n2((q['x'], q['y']), (Roads_trs.loc[roadID, "x"], Roads_trs.loc[roadID, "y"]))
+                if  dist < self.tau ** 2:
+                    potential_xi_for_q.append(self.x1[roadID])
+                    potential_xi_for_q.append(self.x2[roadID])
+            qs.append(potential_xi_for_q)
+        self.model.addConstr(sum(sum(potential_xi_for_q) for potential_xi_for_q in qs) >= 0.5 * len(qs))
+
+        # print(MRTs)
+
         
     
     @decorator_timer  
@@ -174,11 +215,17 @@ class Model:
                     if (i, j) in self.y and self.y[i, j].X > 0:
                         y_sol_idx.append((i, j))
 
-            
-            print(len(x1_sol_idx))
-            print(len(x2_sol_idx))
-            
-            print(np.sum(x1_sol), np.sum(y_sol))
+            print("======================= Optimization Result =======================")
+            params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
+            values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
+            print(f"---------------------- parameters --------------------------------")
+            print("    ".join("{:>6}".format(val) for val in params))
+            print("    ".join("{:>6}".format(val) for val in values))
+            print(f"number of type 1 bike lanes (x_i1 = 1): {len(x1_sol_idx)}")
+            print(f"number of type 2 bike lanes (x_i2 = 1): {len(x2_sol_idx)}")
+            print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
+            print(f"---------------------- Objective Value ---------------------------")
+            print(f"Obj val: {self.model.obj_val}")
             self.result = {"x1": x1_sol_idx,"x2": x2_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
             
             
@@ -209,15 +256,21 @@ class Model:
                 "mu": self.mu,
                 "alpha": self.alpha,
                 "B_L": self.B_L,
+                "w": self.w,
                 "scale": self.args.scale
             },
             "obj_val": self.result['obj_val'],
-            "cal_time_sec": time_spent
+            "cal_time_sec": time_spent,
+            "result_description": {
+                "num_x1": len(x1_df),
+                "num_x2": len(x2_df)
+            }
         }
 
         with open(f"solver/output/{name}/meta_data.json", "w") as file:
             json.dump(meta, file, ensure_ascii = False, indent = True)
 
+        print(f"solutions and metadata saved to output/{name} folder")
 
     def print_(self, message):
         if self.verbose:
@@ -243,6 +296,11 @@ if __name__ == "__main__":
         A = gpd.read_parquet(args.adj_mat)
         
     Roads.set_index('roadID', inplace=True)
+<<<<<<< HEAD
+=======
+    A = gpd.read_parquet(args.adj_mat)
+    MRTs = gpd.read_parquet(args.mrt)
+>>>>>>> 4813d5d86fdf95ed4eeacfea0d4ecee5fea28ace
     print(len(A))
 
     # * filter the data by argument option "scale"
@@ -262,7 +320,7 @@ if __name__ == "__main__":
     ]
     
     M = Model(args = args)
-    M.setup(A, Roads, args)
+    M.setup(A, Roads, MRTs, args)
     result = M.optimize()
     M.save_result(time_spent = result[1])
 
