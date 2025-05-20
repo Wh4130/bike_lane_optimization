@@ -56,7 +56,7 @@ def parse_args():
     )
     parser.add_argument(
         "--tau", type = float,
-        default = 100,
+        default = 300,
         help = "parameter tau (threshold of MRT station coverage radius)"
     )
     parser.add_argument(
@@ -66,12 +66,12 @@ def parse_args():
     )
     parser.add_argument(
         "--B_length", type = float,
-        default = 1000,
+        default = 50000,
         help = "parameter B^L (budget constraint RHS by meter)"
     )
     parser.add_argument(
         "--w", type = float,
-        default = 2.5,
+        default = 3,
         help = "parameter w (relative cost of type 2 over type 1)"
     )
     parser.add_argument(
@@ -148,6 +148,9 @@ class Model:
         )
         
         self.model.setObjective(self.mu * roadUtility + (1-self.mu) * intersectionUtility, GRB.MAXIMIZE)
+
+        self.roadUtility = self.mu * roadUtility
+        self.intersectionUtility = (1 - self.mu) * intersectionUtility
         
         
         # ========= Constraints ===============================================
@@ -247,7 +250,13 @@ class Model:
             print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
             print(f"number of served intersections per road [sum(y_ij) / sum(x_i)]: {np.sum(y_sol) / (np.sum(x1_sol)+np.sum(x2_sol)):6f}")
             print(f"---------------------- Objective Value ---------------------------")
-            print(f"Obj val: {self.model.obj_val}")
+            print(f"Obj val:         {'{:>15}'.format(self.model.obj_val)}")
+            print(f"Road Utility:    {'{:>15}'.format(self.roadUtility.getValue())}")
+            print(f"Intersection Utility:    {'{:>15}'.format(self.intersectionUtility.getValue())}")
+
+            
+
+
             self.result = {"x1": x1_sol_idx,"x2": x2_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
             
             
@@ -281,7 +290,13 @@ class Model:
                 "w": self.w,
                 "scale": self.args.scale
             },
-            "obj_val": self.result['obj_val'],
+            "obj_val": {
+                "total_utility": self.result['obj_val'],
+                "road_utility": self.roadUtility.getValue(),
+                "int_utility": self.intersectionUtility.getValue(),
+                "road_util_prop": self.roadUtility.getValue() / self.result["obj_val"],
+                "int_util_prop": self.intersectionUtility.getValue() / self.result["obj_val"]
+            },
             "cal_time_sec": time_spent,
             "result_description": {
                 "num_x1": len(x1_df),
