@@ -147,14 +147,16 @@ class Model:
             ].itertuples(index=False, name=None)
         )
         
-        
         self.model.setObjective(self.mu * roadUtility + (1-self.mu) * intersectionUtility, GRB.MAXIMIZE)
+        
         
         # ========= Constraints ===============================================
         self.print_("Setting up constraints...")
         
         # Construction cost constraint
         self.model.addConstr(gp.quicksum(((1 * self.x1[i] + self.w * self.x2[i]) * Roads.loc[i, "length"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
+        
+        print(Intersections[['road_i','road_j']].itertuples(index=False, name=None))
         
         # linking of y to x              
         for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None):
@@ -165,6 +167,20 @@ class Model:
         # at most one level to be built
         for i in self.roadIDs:
             self.model.addConstr(self.x1[i] + self.x2[i] <= 1, name="")
+            
+        # experimental constraints to control "connectedness"
+        # gamma = 1.1
+        # control upper limit of sum(y) / sum(x):
+        #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) <= gamma * gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
+        
+        # enforce sum(y) + 1 = sum(x):
+        #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
+        
+        # # at most two reads connected to each intersection:
+        # for i in Intersections['road_i'].unique():
+        #     # find all road_j’s paired with this i
+        #     self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
+
 
         # area coverage constraint
         Roads_trs = proj_to_xy(Roads, "road")
@@ -229,6 +245,7 @@ class Model:
             print(f"number of type 1 bike lanes (x_i1 = 1): {len(x1_sol_idx)}")
             print(f"number of type 2 bike lanes (x_i2 = 1): {len(x2_sol_idx)}")
             print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
+            print(f"number of served intersections per road [sum(y_ij) / sum(x_i)]: {np.sum(y_sol) / (np.sum(x1_sol)+np.sum(x2_sol)):6f}")
             print(f"---------------------- Objective Value ---------------------------")
             print(f"Obj val: {self.model.obj_val}")
             self.result = {"x1": x1_sol_idx,"x2": x2_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
