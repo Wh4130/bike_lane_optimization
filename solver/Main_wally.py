@@ -11,6 +11,11 @@ import json
 from datetime import datetime
 from utils import *
 
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visualizations')))
+from visualizeSolution import plot_bike_lane_solution
+
+
 """
 What's different from Main.py?
 1. Newest objective function and constraints on overleaf
@@ -165,16 +170,16 @@ class Model:
         Roads_trs = proj_to_xy(Roads, "road")
         MRT_trs   = proj_to_xy(MRTs, "other")
         qs = []
-        print("Adding area coverage constraint...")
-        for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
-            potential_xi_for_q = []
-            for roadID in self.roadIDs:
-                dist = euclidean_n2((q['x'], q['y']), (Roads_trs.loc[roadID, "x"], Roads_trs.loc[roadID, "y"]))
-                if  dist < self.tau ** 2:
-                    potential_xi_for_q.append(self.x1[roadID])
-                    potential_xi_for_q.append(self.x2[roadID])
-            qs.append(potential_xi_for_q)
-        self.model.addConstr(sum(sum(potential_xi_for_q) for potential_xi_for_q in qs) >= 0.5 * len(qs))
+        # print("Adding area coverage constraint...")
+        # for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
+        #     potential_xi_for_q = []
+        #     for roadID in self.roadIDs:
+        #         dist = euclidean_n2((q['x'], q['y']), (Roads_trs.loc[roadID, "x"], Roads_trs.loc[roadID, "y"]))
+        #         if  dist < self.tau ** 2:
+        #             potential_xi_for_q.append(self.x1[roadID])
+        #             potential_xi_for_q.append(self.x2[roadID])
+        #     qs.append(potential_xi_for_q)
+        # self.model.addConstr(sum(sum(potential_xi_for_q) for potential_xi_for_q in qs) >= 0.5 * len(qs))
 
         # print(MRTs)
 
@@ -248,6 +253,7 @@ class Model:
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
         result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
+        
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -277,8 +283,22 @@ class Model:
             
     def visualizeSolution(self):
         if self.model.status == GRB.OPTIMAL:    
-            pass
             # call function from Nick
+            assert self.result != {}, "please run optimization first so there would be result to save."
+
+            # * saving solution of roads
+            x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+            x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+
+            x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
+            x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
+
+            result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+            
+            roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
+            
+            fig, ax = plot_bike_lane_solution(result_gdf, roads)
+            plt.show()
     
 
 
@@ -320,5 +340,8 @@ if __name__ == "__main__":
     
     result = M.optimize()
     
-    M.save_result(time_spent = result[1])
+    M.visualizeSolution()
+    
+    
+    # M.save_result(time_spent = result[1])
 
