@@ -36,7 +36,7 @@ def parse_args():
     )
     parser.add_argument(
         "--mrt", type = str,
-        default = "./data/processed/mrt_stations.parquet",
+        default = "../data/processed/mrt_stations.parquet",
         help = "full data path to the mrt station data"
     )
     parser.add_argument(
@@ -131,7 +131,7 @@ class Model:
         self.print_("Setting up objective function...")
         
         roadUtility = gp.quicksum(
-            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + Roads.loc[i, "danger_m2_norm"] * self.x2[i])
+            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + 3 * self.x2[i])
             for i in self.roadIDs
         )
         
@@ -232,10 +232,9 @@ class Model:
     def save_result(self, time_spent):
         # * making directory
         if self.args.exp_name != "default":
-            name = self.args.exp_name
+            os.makedirs(f"solver/output/{self.args.exp_name}", exist_ok = True)
         else:
-            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
-        os.makedirs(f"solver/output/{name}", exist_ok = True)
+            os.makedirs(f'solver/output/{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', exist_ok = True)
 
         assert self.result != {}, "please run optimization first so there would be result to save."
 
@@ -248,7 +247,7 @@ class Model:
 
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
-        result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
+        result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -267,7 +266,7 @@ class Model:
             }
         }
 
-        with open(f"solver/output/{name}/meta_data.json", "w") as file:
+        with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
             json.dump(meta, file, ensure_ascii = False, indent = True)
 
         print(f"solutions and metadata saved to output/{name} folder")
@@ -287,21 +286,17 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    print(args.road_data[1:])
     try:
         Roads = gpd.read_parquet(args.road_data)
         A = gpd.read_parquet(args.adj_mat)
+        MRTs = gpd.read_parquet(args.mrt)
     except:
-        Roads = gpd.read_parquet(args.road_data)
-        A = gpd.read_parquet(args.adj_mat)
-        
+        # if data cannot be loaded from tha above path, try without the first . in the path string
+        Roads = gpd.read_parquet(args.road_data[1:])
+        A = gpd.read_parquet(args.adj_mat[1:])
+        MRTs = gpd.read_parquet(args.mrt[1:])
+    
     Roads.set_index('roadID', inplace=True)
-<<<<<<< HEAD
-=======
-    A = gpd.read_parquet(args.adj_mat)
-    MRTs = gpd.read_parquet(args.mrt)
->>>>>>> 4813d5d86fdf95ed4eeacfea0d4ecee5fea28ace
-    print(len(A))
 
     # * filter the data by argument option "scale"
     if args.scale == "small":
@@ -320,7 +315,10 @@ if __name__ == "__main__":
     ]
     
     M = Model(args = args)
+    
     M.setup(A, Roads, MRTs, args)
+    
     result = M.optimize()
+    
     M.save_result(time_spent = result[1])
 
