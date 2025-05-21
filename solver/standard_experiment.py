@@ -10,7 +10,16 @@ Commands = [
     ["python3", "solver/Main_wally.py", "--exp_name", "scenario_6", "--mu", "0.5"],
     ["python3", "solver/Main_wally.py", "--exp_name", "scenario_7", "--mu", "0.8"],
     ["python3", "solver/Main_wally.py", "--exp_name", "scenario_8", "--w", "2.5"],
-    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_9", "--w", "3"]
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_9", "--w", "3"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_1_new_policy", "--B_length", "5000", "--remove_existing"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_2_new_policy", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_3_new_policy", "--B_length", "15000", "--remove_existing"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_4_new_policy", "--scale", "small", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_5_new_policy", "--scale", "large", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_6_new_policy", "--mu", "0.5", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_7_new_policy", "--mu", "0.8", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_8_new_policy", "--w", "2.5", "--remove_existing", "--B_length", "10000"],
+    ["python3", "solver/Main_wally.py", "--exp_name", "scenario_9_new_policy", "--w", "3", "--remove_existing", "--B_length", "10000"]
 ]
 
 if __name__ == "__main__":

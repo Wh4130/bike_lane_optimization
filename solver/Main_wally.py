@@ -79,6 +79,10 @@ def parse_args():
         help = "show log to console"
     )
     parser.add_argument(
+        "--remove_existing", action = "store_true",
+        help = "whether to remove existing bike lanes"
+    )
+    parser.add_argument(
         "--exp_name", type = str, 
         default = "default",
         help = "the name of the experiment"
@@ -261,9 +265,10 @@ class Model:
     def save_result(self, time_spent):
         # * making directory
         if self.args.exp_name != "default":
-            os.makedirs(f"solver/output/{self.args.exp_name}", exist_ok = True)
+            name = self.args.exp_name
         else:
-            os.makedirs(f'solver/output/{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', exist_ok = True)
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        os.makedirs(f"solver/output/{name}", exist_ok = True)
 
         assert self.result != {}, "please run optimization first so there would be result to save."
 
@@ -276,8 +281,10 @@ class Model:
 
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
-        result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
-        
+
+        result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
+        self.sol_gdf = result_gdf
+
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -298,8 +305,10 @@ class Model:
             "cal_time_sec": time_spent,
             "result_description": {
                 "num_x1": len(x1_df),
-                "num_x2": len(x2_df)
-            }
+                "num_x2": len(x2_df),
+                "num_y" : len(self.result["y"])
+            },
+            "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
         }
 
         with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
@@ -313,6 +322,14 @@ class Model:
             
     def visualizeSolution(self):
         if self.model.status == GRB.OPTIMAL:    
+
+            Roads = gpd.read_parquet(self.args.road_data)
+            plot_map(
+                self.args.exp_name,
+                Roads, self.sol_gdf,
+                self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+            )
+
             # call function from Nick
             assert self.result != {}, "please run optimization first so there would be result to save."
 
@@ -329,6 +346,10 @@ class Model:
             
             fig, ax = plot_bike_lane_solution(result_gdf, roads)
             plt.show()
+            
+            print("Visualization done!")
+            
+
     
 
 
@@ -356,6 +377,11 @@ if __name__ == "__main__":
     elif args.scale == "large":
         Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
 
+    # * filter the data by argument option "remove_existing"
+    if args.remove_existing:
+        Roads = Roads[Roads["has_bike_lane"] == 0]
+    
+
     #print(A.head())
     
     # filter to only consider adjacency of roads in the Roads set
@@ -369,7 +395,10 @@ if __name__ == "__main__":
     M.setup(A, Roads, MRTs, args)
     
     result = M.optimize()
-    
+
+    M.save_result(time_spent = result[1])
+    M.visualizeSolution()
+
     
     # visualize result
     M.visualizeSolution()

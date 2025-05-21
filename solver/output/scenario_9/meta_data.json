@@ -13,9 +13,11 @@
   "road_util_prop": 0.16464427155504466,
   "int_util_prop": 0.8353557284449546
  },
- "cal_time_sec": 4.665028095245361,
+ "cal_time_sec": 8.165776014328003,
  "result_description": {
   "num_x1": 823,
-  "num_x2": 14
- }
+  "num_x2": 14,
+  "num_y": 1075
+ },
+ "policy_similarity": 0.4886086099280554
 }

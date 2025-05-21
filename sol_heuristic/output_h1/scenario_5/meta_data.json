@@ -1,0 +1,22 @@
+{
+ "hyperparams": {
+  "mu": 0.2,
+  "alpha": 0.2,
+  "B_L": 50000,
+  "w": 3,
+  "scale": "large"
+ },
+ "obj_val": {
+  "total_utility": 1025.3466592805348,
+  "road_utility": 2286.276100199252,
+  "int_utility": 710.1142990508556,
+  "road_util_prop": 2.229759154629212,
+  "int_util_prop": 0.6925602113426971
+ },
+ "cal_time_sec": 7.9811577796936035,
+ "result_description": {
+  "num_x1": 103,
+  "num_x2": 84
+ },
+ "policy_similarity": 0.658903600420118
+}
