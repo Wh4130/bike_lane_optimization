@@ -18,7 +18,7 @@ def spawnDemand(ds, location, demandDistribution, magnitude=1):
     r = np.sqrt((x2d-x_pos)**2 + (y2d-y_pos)**2)                 # Euclidean distance from centre
 
     # 3. evaluate and store the demand kernel --------------------------
-    ds["demand"].loc[:] = ds["demand"].loc[:] + magnitude * demandDistribution(r, alpha=0.5)
+    ds["demand"].loc[:] = ds["demand"].loc[:] + magnitude * demandDistribution(r, alpha=0.2)
     
     return ds
     

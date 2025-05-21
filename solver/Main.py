@@ -9,17 +9,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "./data/processed/road_data_adj_count_usage.parquet",
+        default = "../data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "./data/processed/adjacency_demand_buffered.parquet",
+        default = "../data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
         "--scale", type = str, choices = ["small", "medium", "large"],
-        default = "medium",
+        default = "large",
         help = "scale of the model (the number of decision variables)"
     )
     parser.add_argument(
@@ -137,7 +137,10 @@ class Model:
             # print(x_sol)
             # print(y_sol)
             
-            print(np.sum(x_sol), np.sum(y_sol))
+            self.print_("sum fo x:"+str(np.sum(x_sol))+"sum of y:"+str(np.sum(y_sol)))
+            print("intersections per road = ", np.sum(y_sol) / np.sum(x_sol))
+            
+            
             return {"x": x_sol_idx, "y": y_sol_idx, "obj_val": self.model.obj_val}
             
             
@@ -160,6 +163,7 @@ if __name__ == "__main__":
     Roads = pd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
     A = pd.read_parquet(args.adj_mat)
+    print(len(A))
 
     # * filter the data by argument option "scale"
     if args.scale == "small":

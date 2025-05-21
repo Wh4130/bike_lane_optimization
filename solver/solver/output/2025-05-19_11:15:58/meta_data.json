@@ -1,0 +1,10 @@
+{
+ "hyperparams": {
+  "mu": 0.2,
+  "alpha": 0.2,
+  "B_L": 1000,
+  "scale": "medium"
+ },
+ "obj_val": 2201.9525830067028,
+ "cal_time_sec": 1.9755921363830566
+}

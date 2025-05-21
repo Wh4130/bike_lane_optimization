@@ -16,7 +16,7 @@ def project_row(row):
     
 
 if __name__ == "__main__":
-    data = pd.read_csv("./data/facilities/mrt_station.csv")
+    data = pd.read_csv("../data/facilities/mrt_station.csv")
     data['geometry'] = data['wkt_geom'].apply(lambda s: shapely.wkt.loads(s))  # if WKT
     gdf  = gpd.GeoDataFrame(data, geometry = 'geometry', crs='EPSG:3826')
     gdf = gdf.to_crs("EPSG:4326")
@@ -28,6 +28,6 @@ if __name__ == "__main__":
     gdf[['x_m', 'y_m']] = gdf.apply(project_row, axis=1)
 
     gdf = gdf.drop(gdf[~gdf['MARKNAME1'].str.contains("臺北")].index.tolist())
-    gdf.to_parquet("data/processed/mrt_stations.parquet")
+    gdf.to_parquet("../data/processed/mrt_stations.parquet")
 
     print("mrt stations data processed and saved in data/processed folder.")

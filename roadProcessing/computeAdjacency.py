@@ -30,9 +30,14 @@ def main():
     args = parse_args()
 
     # * Load in data
-    gdf_road = gpd.read_parquet("data/processed/road_data.parquet")
+    try:
+        gdf_road = gpd.read_parquet("data/processed/road_data.parquet")
+        ds_DemandGrid   = xr.open_dataset("demandModel/demandModel_metreGrid.nc")
+    except:
+        gdf_road = gpd.read_parquet("../data/processed/road_data.parquet")
+        ds_DemandGrid   = xr.open_dataset("../demandModel/demandModel_metreGrid.nc")
+        
     gdf_road = gdf_road.reset_index(drop=True)
-    ds_DemandGrid   = xr.open_dataset("demandModel/demandModel_metreGrid.nc")
 
     # * Initialize container
     results = []
@@ -138,6 +143,7 @@ def main():
 
     # * Transform it to GeoPandas
     df_adj = pd.DataFrame(results)
+    print("number of intersections found: ", len(df_adj))
     gdf_adj = gpd.GeoDataFrame(df_adj, geometry = 'intersection_geom')
 
     # * Calculate the column for normalized demand
@@ -145,15 +151,21 @@ def main():
 
     # * Save it to parquet
     gdf_adj['intersection_demand'] = gdf_adj['intersection_demand'].apply(
-    lambda v: v.item() if hasattr(v, "item") else v
-)
+        lambda v: v.item() if hasattr(v, "item") else v
+    )
     
     gdf_adj.fillna({"intersection_demand_norm": 3}, inplace = True)
     
     if args.buffer:
-        gdf_adj.to_parquet("./data/processed/adjacency_demand_buffered.parquet")
+        try:
+            gdf_adj.to_parquet("../data/processed/adjacency_demand_buffered.parquet")
+        except:
+            gdf_adj.to_parquet("./data/processed/adjacency_demand_buffered.parquet")
     else:
-        gdf_adj.to_parquet("./data/processed/adjacency_demand.parquet")
+        try:
+            gdf_adj.to_parquet("./data/processed/adjacency_demand.parquet")
+        except:
+            gdf_adj.to_parquet("../data/processed/adjacency_demand.parquet")
 
 
 if __name__ == "__main__":

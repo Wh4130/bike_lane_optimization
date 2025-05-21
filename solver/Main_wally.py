@@ -11,6 +11,11 @@ import json
 from datetime import datetime
 from utils import *
 
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'visualizations')))
+from visualizeSolution import plot_bike_lane_solution
+
+
 """
 What's different from Main.py?
 1. Newest objective function and constraints on overleaf
@@ -26,17 +31,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "./data/processed/road_data_adj_count_usage.parquet",
+        default = "../data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "./data/processed/adjacency_demand_buffered.parquet",
+        default = "../data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
         "--mrt", type = str,
-        default = "./data/processed/mrt_stations.parquet",
+        default = "../data/processed/mrt_stations.parquet",
         help = "full data path to the mrt station data"
     )
     parser.add_argument(
@@ -135,7 +140,7 @@ class Model:
         self.print_("Setting up objective function...")
         
         roadUtility = gp.quicksum(
-            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + Roads.loc[i, "danger_m2_norm"] * self.x2[i])
+            (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + 3 * self.x2[i])
             for i in self.roadIDs
         )
         
@@ -146,11 +151,11 @@ class Model:
             ].itertuples(index=False, name=None)
         )
         
-        
         self.model.setObjective(self.mu * roadUtility + (1-self.mu) * intersectionUtility, GRB.MAXIMIZE)
 
         self.roadUtility = self.mu * roadUtility
         self.intersectionUtility = (1 - self.mu) * intersectionUtility
+        
         
         # ========= Constraints ===============================================
         self.print_("Setting up constraints...")
@@ -167,21 +172,35 @@ class Model:
         # at most one level to be built
         for i in self.roadIDs:
             self.model.addConstr(self.x1[i] + self.x2[i] <= 1, name="")
+            
+        # experimental constraints to control "connectedness"
+        # gamma = 1.1
+        # control upper limit of sum(y) / sum(x):
+        #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) <= gamma * gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
+        
+        # enforce sum(y) + 1 = sum(x):
+        #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
+        
+        # at most two reads connected to each intersection:
+        for i in Intersections['road_i'].unique():
+            # find all road_j’s paired with this i
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
+
 
         # area coverage constraint
         Roads_trs = proj_to_xy(Roads, "road")
         MRT_trs   = proj_to_xy(MRTs, "other")
         qs = []
-        print("Adding area coverage constraint...")
-        for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
-            potential_xi_for_q = []
-            for roadID in self.roadIDs:
-                dist = euclidean_n2((q['x'], q['y']), (Roads_trs.loc[roadID, "x"], Roads_trs.loc[roadID, "y"]))
-                if  dist < self.tau ** 2:
-                    potential_xi_for_q.append(self.x1[roadID])
-                    potential_xi_for_q.append(self.x2[roadID])
-            qs.append(potential_xi_for_q)
-        self.model.addConstr(sum(sum(potential_xi_for_q) for potential_xi_for_q in qs) >= 0.5 * len(qs))
+        # print("Adding area coverage constraint...")
+        # for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
+        #     potential_xi_for_q = []
+        #     for roadID in self.roadIDs:
+        #         dist = euclidean_n2((q['x'], q['y']), (Roads_trs.loc[roadID, "x"], Roads_trs.loc[roadID, "y"]))
+        #         if  dist < self.tau ** 2:
+        #             potential_xi_for_q.append(self.x1[roadID])
+        #             potential_xi_for_q.append(self.x2[roadID])
+        #     qs.append(potential_xi_for_q)
+        # self.model.addConstr(sum(sum(potential_xi_for_q) for potential_xi_for_q in qs) >= 0.5 * len(qs))
 
         # print(MRTs)
 
@@ -231,6 +250,7 @@ class Model:
             print(f"number of type 1 bike lanes (x_i1 = 1): {len(x1_sol_idx)}")
             print(f"number of type 2 bike lanes (x_i2 = 1): {len(x2_sol_idx)}")
             print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
+            print(f"number of served intersections per road [sum(y_ij) / sum(x_i)]: {np.sum(y_sol) / (np.sum(x1_sol)+np.sum(x2_sol)):6f}")
             print(f"---------------------- Objective Value ---------------------------")
             print(f"Obj val:         {'{:>15}'.format(self.model.obj_val)}")
             print(f"Road Utility:    {'{:>15}'.format(self.roadUtility.getValue())}")
@@ -261,8 +281,10 @@ class Model:
 
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
+
         result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
         self.sol_gdf = result_gdf
+
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -289,7 +311,7 @@ class Model:
             "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
         }
 
-        with open(f"solver/output/{name}/meta_data.json", "w") as file:
+        with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
             json.dump(meta, file, ensure_ascii = False, indent = True)
 
         print(f"solutions and metadata saved to output/{name} folder")
@@ -300,13 +322,34 @@ class Model:
             
     def visualizeSolution(self):
         if self.model.status == GRB.OPTIMAL:    
+
             Roads = gpd.read_parquet(self.args.road_data)
             plot_map(
                 self.args.exp_name,
                 Roads, self.sol_gdf,
                 self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
             )
+
+            # call function from Nick
+            assert self.result != {}, "please run optimization first so there would be result to save."
+
+            # * saving solution of roads
+            x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+            x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+
+            x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
+            x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
+
+            result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+            
+            roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
+            
+            fig, ax = plot_bike_lane_solution(result_gdf, roads)
+            plt.show()
+            
             print("Visualization done!")
+            
+
     
 
 
@@ -314,11 +357,17 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    Roads = gpd.read_parquet(args.road_data)
+    try:
+        Roads = gpd.read_parquet(args.road_data)
+        A = gpd.read_parquet(args.adj_mat)
+        MRTs = gpd.read_parquet(args.mrt)
+    except:
+        # if data cannot be loaded from tha above path, try without the first . in the path string
+        Roads = gpd.read_parquet(args.road_data[1:])
+        A = gpd.read_parquet(args.adj_mat[1:])
+        MRTs = gpd.read_parquet(args.mrt[1:])
+    
     Roads.set_index('roadID', inplace=True)
-    A = gpd.read_parquet(args.adj_mat)
-    MRTs = gpd.read_parquet(args.mrt)
-    print(len(A))
 
     # * filter the data by argument option "scale"
     if args.scale == "small":
@@ -342,9 +391,20 @@ if __name__ == "__main__":
     ]
     
     M = Model(args = args)
+    
     M.setup(A, Roads, MRTs, args)
+    
     result = M.optimize()
+
     M.save_result(time_spent = result[1])
     M.visualizeSolution()
+
     
+    # visualize result
+    M.visualizeSolution()
+    
+    
+    
+    
+    # M.save_result(time_spent = result[1])
 
