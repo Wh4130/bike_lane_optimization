@@ -159,8 +159,6 @@ class Model:
         # Construction cost constraint
         self.model.addConstr(gp.quicksum(((1 * self.x1[i] + self.w * self.x2[i]) * Roads.loc[i, "length"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
         
-        print(Intersections[['road_i','road_j']].itertuples(index=False, name=None))
-        
         # linking of y to x              
         for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None):
             # self.model.addConstr(self.y[i, j] >= self.x[i] + self.x[j] - 1, name="")
@@ -179,10 +177,10 @@ class Model:
         # enforce sum(y) + 1 = sum(x):
         #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
         
-        # # at most two reads connected to each intersection:
-        # for i in Intersections['road_i'].unique():
-        #     # find all road_j’s paired with this i
-        #     self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
+        # at most two reads connected to each intersection:
+        for i in Intersections['road_i'].unique():
+            # find all road_j’s paired with this i
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
 
 
         # area coverage constraint
@@ -372,7 +370,11 @@ if __name__ == "__main__":
     
     result = M.optimize()
     
+    
+    # visualize result
     M.visualizeSolution()
+    
+    
     
     
     # M.save_result(time_spent = result[1])

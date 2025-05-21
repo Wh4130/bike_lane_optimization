@@ -41,6 +41,11 @@ def plot_bike_lane_solution(bike_lanes, roads):
 
     ax.legend(handles=legend_elements, title="Road Categories")
     ax.set_title("Roads by Category")
+    
+    # limit to downtown taipei
+    ax.set_xlim((121.503, 121.574))
+    ax.set_ylim((25.013, 25.079))
+    
     return fig, ax
 
 
