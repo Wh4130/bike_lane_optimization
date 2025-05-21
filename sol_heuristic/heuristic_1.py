@@ -1,0 +1,319 @@
+import gurobipy as gp
+from gurobipy import GRB
+import numpy as np
+import pandas as pd
+import argparse
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import geopandas as gpd
+import os
+import json
+from datetime import datetime
+from plot_utils import plot_map
+
+
+"""
+This is a very naive algorithm! Just like greedy algorithm for the knap-sack problem. This algorithm does not consider the second constrant: MRT coverage. It also does not consider the adjacency.
+
+For each iteration, it does:
+1. Find the road with highest marginal utility within the remaining road
+2. Check the corresponding degree of danger. If the value exceeds the parameter --w, then select type 2 bike lane rather than type 1. Otherwise, select type 1.
+3. Reduce the total budget by (x_i1 + w * x_i2) * length_i
+"""
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--road_data", type = str,
+        default = "./data/processed/road_data_adj_count_usage.parquet",
+        help = "full data path to the road data"
+    )
+    parser.add_argument(
+        "--adj_mat", type = str,
+        default = "./data/processed/adjacency_demand_buffered.parquet",
+        help = "full data path to the adjacency matrix data"
+    )
+    parser.add_argument(
+        "--scale", type = str, choices = ["small", "medium", "large"],
+        default = "medium",
+        help = "scale of the model (the number of decision variables)"
+    )
+    parser.add_argument(
+        "--alpha", type = float,
+        default = 0.2,
+        help = "parameter alpha (importance of road length over road cycling demand)"
+    )
+    parser.add_argument(
+        "--tau", type = float,
+        default = 300,
+        help = "parameter tau (threshold of MRT station coverage radius)"
+    )
+    parser.add_argument(
+        "--mu", type = float,
+        default = 0.2,
+        help = "parameter mu (importance of total road utility over adjacency utility)"
+    )
+    parser.add_argument(
+        "--B_length", type = float,
+        default = 50000,
+        help = "parameter B^L (budget constraint RHS by meter)"
+    )
+    parser.add_argument(
+        "--w", type = float,
+        default = 3,
+        help = "parameter w (relative cost of type 2 over type 1)"
+    )
+    parser.add_argument(
+        "--exp_name", type = str, 
+        default = "default",
+        help = "the name of the experiment"
+    )
+    parser.add_argument(
+        "--remove_existing", action = "store_true",
+        help = "whether to remove existing bike lanes"
+    )
+    args = parser.parse_args()
+    return args
+
+def decorator_timer(some_function):
+    from time import time
+
+    def wrapper(*args, **kwargs):
+        t1 = time()
+        result = some_function(*args, **kwargs)
+        end = time()-t1
+        return result, end
+    return wrapper
+
+
+class Model:
+    def __init__(self, args):
+        self.args = args
+        self.verbose = True
+        self.result = {}
+        
+    @decorator_timer
+    def setup(self, Intersections, Roads, args):
+        self.Roads = Roads
+        self.mu    = args.mu
+        self.alpha = args.alpha
+        self.B_L   = args.B_length
+        self.w     = args.w
+        self.tau   = args.tau
+
+        self.status = "pending"
+        
+        # set of all roads and intersections
+        self.roadIDs = Roads.index 
+        self.Intersections = Intersections
+        
+        self.roadIDs              = self.roadIDs.tolist()
+        # self.intersectingRoadIDs  = self.intersectingRoadIDs.tolist()
+  
+        self.x1_sol_idx = []
+        self.x2_sol_idx = []
+        self.y_sol_idx  = []
+        self.road_utility  = 0
+        self.int_utility   = 0
+        self.total_utility = 0
+
+
+        # * Generate a column: road utility (balanced with alpha)
+        self.Roads["Util"] = (self.Roads["length_norm"] ** self.alpha) * (self.Roads["roadDemand_m2_norm"] ** (1 - self.alpha)) 
+
+    @decorator_timer
+    def optimize(self):
+        
+        candidates_roads = self.Roads.index.tolist()
+        self.B_L_use = self.B_L
+
+
+        while self.B_L_use > 0:
+
+            if not candidates_roads:
+                print("No more candidate roads to consider.")
+                break
+
+            max_idx = self.Roads.loc[candidates_roads, "Util"].idxmax()
+
+            # * First check the degree of danger (check if it's good to buiuld level 2)
+            if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w:
+
+                # * If larger than self.w, check whether the budget constraint is enough
+                if self.B_L_use - self.Roads.loc[max_idx, "length"] * self.w >= 0:
+
+                    # * If enough, subtract B_L_use by length i * self.w, and add i to self.x2_sol
+                    self.B_L_use -= self.Roads.loc[max_idx, "length"] * self.w
+                    self.x2_sol_idx.append(max_idx)
+                    self.road_utility += Roads.loc[max_idx, "Util"] * self.Roads.loc[max_idx, "danger_m2_norm"]
+                    candidates_roads.remove(max_idx)
+
+                    continue # * Go to the next iteration
+
+                
+
+            # * If does not pass the first check, then use level 1 bike lane
+            if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w:
+
+                # * also check availability
+                if self.B_L_use - self.Roads.loc[max_idx, "length"] >= 0:
+
+                    self.B_L_use -= self.Roads.loc[max_idx, "length"]
+                    self.x1_sol_idx.append(max_idx)
+                    self.road_utility += self.Roads.loc[max_idx, "Util"]
+                    candidates_roads.remove(max_idx)
+
+                else:
+                    candidates_roads.remove(max_idx)
+                    break
+            
+            else:
+                candidates_roads.remove(max_idx)
+                continue
+
+
+        # * Calculate the adjacency
+        self.Intersections["idx_pair"] = "(" + self.Intersections["road_i"].astype(str) + ", " + self.Intersections["road_j"].astype(str) + ")"
+
+        self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
+        for i in self.x_idx:
+            for j in self.x_idx:
+                pair = f"({i}, {j})"
+                if pair in self.Intersections["idx_pair"].tolist():
+                    self.y_sol_idx.append(pair)
+                    U_yij = float(self.Intersections.loc[self.Intersections["idx_pair"] == pair, "intersection_demand_norm"])
+                    self.int_utility += U_yij
+
+
+        self.total_utility = self.road_utility * self.mu + self.int_utility *  (1 - self.mu)
+        print("Optimization Successed!")
+        self.status = "succeeded"
+        
+
+
+        print("======================== Heuristic Result =========================")
+
+        params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
+        values = [self.mu, self.alpha, self.B_L, self.w, "--", self.args.scale]
+        print(f"---------------------- parameters --------------------------------")
+        print("    ".join("{:>6}".format(val) for val in params))
+        print("    ".join("{:>6}".format(val) for val in values))
+        print(f"number of type 1 bike lanes (x_i1 = 1): {len(self.x1_sol_idx)}")
+        print(f"number of type 2 bike lanes (x_i2 = 1): {len(self.x2_sol_idx)}")
+        print(f"number of served intersections (y_ij = 1): {len(self.y_sol_idx)}")
+        print(f"---------------------- Objective Value ---------------------------")
+        print(f"Obj val:              {self.total_utility}")
+        print(f"Road Utility:         {self.road_utility}")
+        print(f"Intersection Utility: {self.int_utility}")
+        # print(f"Obj val:              {'{:>25}'.format(self.total_utility)}")
+        # print(f"Road Utility:         {'{:>25}'.format(self.road_utility)}")
+        # print(f"Intersection Utility: {'{:>15}'.format(self.int_utility)}")
+            
+
+
+        self.result = {"x1": self.x1_sol_idx,"x2": self.x2_sol_idx, "y": self.y_sol_idx, "obj_val": self.total_utility}
+            
+            
+    def save_result(self, time_spent):
+        # * making directory
+        if self.args.exp_name != "default":
+            name = self.args.exp_name
+        else:
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        os.makedirs(f"sol_heuristic/output_h1/{name}", exist_ok = True)
+
+        assert self.result != {}, "please run optimization first so there would be result to save."
+
+        # * saving solution of roads
+        x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+        x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+
+        x1_df_merged = pd.merge(x1_df, Roads, how = 'left', on = 'roadID')
+        x2_df_merged = pd.merge(x2_df, Roads, how = 'left', on = 'roadID')
+
+        result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+        result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
+        result_gdf.to_parquet(f"sol_heuristic/output_h1/{name}/roads_sol.parquet")
+        self.sol_gdf = result_gdf
+
+        # * saving hyperparameter, objective value, and time cost
+        meta = {
+            "hyperparams": {
+                "mu": self.mu,
+                "alpha": self.alpha,
+                "B_L": self.B_L,
+                "w": self.w,
+                "scale": self.args.scale
+            },
+            "obj_val": {
+                "total_utility": self.total_utility,
+                "road_utility": self.road_utility,
+                "int_utility": self.int_utility,
+                "road_util_prop": self.road_utility / self.total_utility,
+                "int_util_prop": self.int_utility / self.total_utility
+            },
+            "cal_time_sec": time_spent,
+            "result_description": {
+                "num_x1": len(x1_df),
+                "num_x2": len(x2_df)
+            },
+            "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
+        }
+
+        with open(f"sol_heuristic/output_h1/{name}/meta_data.json", "w") as file:
+            json.dump(meta, file, ensure_ascii = False, indent = True)
+
+        print(f"solutions and metadata saved to output_h1/{name} folder")
+
+    # def print_(self, message):
+    #     if self.verbose:
+    #         print(message)
+            
+    def visualizeSolution(self):
+        Roads = gpd.read_parquet(self.args.road_data)
+        plot_map(
+            "naive", self.args.exp_name,
+            Roads, self.sol_gdf,
+            self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+        )
+        print("Visualization done!")
+    
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
+    Roads = gpd.read_parquet(args.road_data)
+    Roads.set_index('roadID', inplace=True)
+    A = gpd.read_parquet(args.adj_mat)
+
+    # * filter the data by argument option "scale"
+    if args.scale == "small":
+        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
+    elif args.scale == "medium":
+        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+    elif args.scale == "large":
+        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
+
+    # * filter the data by argument option "remove_existing"
+    if args.remove_existing:
+        Roads = Roads[Roads["has_bike_lane"] == 0]
+
+    #print(A.head())
+    
+    # filter to only consider adjacency of roads in the Roads set
+    A = A[
+        A["road_i"].isin(Roads.index) 
+        & A["road_j"].isin(Roads.index)
+    ]
+    
+    M = Model(args = args)
+    M.setup(A, Roads, args)
+    result = M.optimize()
+    M.save_result(time_spent = result[1])
+    M.visualizeSolution()
+
+    
+    
+
