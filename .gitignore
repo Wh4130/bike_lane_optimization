@@ -1,2 +1,4 @@
 test.ipynb
 .DS_Store
+cache
+__pycache__
