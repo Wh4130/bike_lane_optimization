@@ -31,17 +31,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "../data/processed/road_data_adj_count_usage.parquet",
+        default = "./data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "../data/processed/adjacency_demand_buffered.parquet",
+        default = "./data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
         "--mrt", type = str,
-        default = "../data/processed/mrt_stations.parquet",
+        default = "./data/processed/mrt_stations.parquet",
         help = "full data path to the mrt station data"
     )
     parser.add_argument(
@@ -182,7 +182,7 @@ class Model:
         #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
         
         # at most two reads connected to each intersection:
-        for i in Intersections['road_i'].unique():
+        for i in tqdm(Intersections['road_i'].unique()):
             # find all road_j’s paired with this i
             self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
 
@@ -330,22 +330,22 @@ class Model:
                 self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
             )
 
-            # call function from Nick
-            assert self.result != {}, "please run optimization first so there would be result to save."
+            # # call function from Nick
+            # assert self.result != {}, "please run optimization first so there would be result to save."
 
-            # * saving solution of roads
-            x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
-            x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+            # # * saving solution of roads
+            # x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+            # x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
 
-            x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
-            x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
+            # x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
+            # x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
 
-            result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+            # result_gdf = pd.concat([x1_df_merged, x2_df_merged])
             
-            roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
+            # roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
             
-            fig, ax = plot_bike_lane_solution(result_gdf, roads)
-            plt.show()
+            # fig, ax = plot_bike_lane_solution(result_gdf, roads)
+            # plt.show()
             
             print("Visualization done!")
             
@@ -401,7 +401,7 @@ if __name__ == "__main__":
 
     
     # visualize result
-    M.visualizeSolution()
+    # M.visualizeSolution()
     
     
     

@@ -129,6 +129,7 @@ class Model:
 
         candidates_roads         = self.Roads.index.tolist()
         selected_roads           = []
+        selected_roads_paird     = []
         self.B_L_use = self.B_L
 
         while self.B_L_use > 0:
@@ -136,12 +137,12 @@ class Model:
             if not candidates_roads:
                 break
             
-            # * initialize it
+            # * If the selected_roads is empty, initialize it by the road with highest utility
             if selected_roads == []:
                 max_idx = self.Roads.loc[candidates_roads, "Util"].idxmax()
             
                 # * First check the degree of danger (check if it's good to buiuld level 2)
-                if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w:
+                if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w * 2.5:
 
                     # * If larger than self.w, check whether the budget constraint is enough
                     if self.B_L_use - self.Roads.loc[max_idx, "length"] * self.w >= 0:
@@ -158,7 +159,7 @@ class Model:
                     
 
                 # * If does not pass the first check, then use level 1 bike lane
-                if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w:
+                if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w * 2.5:
 
                     # * also check availability
                     if self.B_L_use - self.Roads.loc[max_idx, "length"] >= 0:
@@ -177,27 +178,38 @@ class Model:
                     candidates_roads.remove(max_idx)
                     continue
 
+            # * If selected_roads is not empty, search among intersections where one road is selected, find the pair with the highest utility, and then select the other road in that pair.
             else:
-                XOR = (self.Intersections["road_i"].isin(selected_roads) ^ self.Intersections["road_j"].isin(selected_roads)) & (self.Intersections["road_i"].isin(candidates_roads) ^ self.Intersections["road_j"].isin(candidates_roads))
+                max_adj_y_constr = pd.Series(selected_roads_paird).value_counts()
+                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr == 2].index.tolist()
+                XOR = ((self.Intersections["road_i"].isin(selected_roads) ^ self.Intersections["road_j"].isin(selected_roads)) 
+                       & 
+                       (self.Intersections["road_i"].isin(candidates_roads) ^ self.Intersections["road_j"].isin(candidates_roads))
+                       &
+                        ~(self.Intersections["road_i"].isin(max_adj_y_constr) | self.Intersections["road_j"].isin(max_adj_y_constr))
+                       )
 
                 int_subset = self.Intersections.loc[XOR, :]
 
                 if len(int_subset) == 0:
                     selected_roads = []
                     continue 
-                    # * 若所有選定的路都沒有合法交集，就重設 selected_roads，讓迴圈可以重新只用 road Utility 偵測
+                    # * if all selected roads have no adjacent roads, reset selected_roads = [] and find next road with the highest utility.
                 
                 # print(candidates_intersections)
                 int_subset_idxmax = int_subset["intersection_demand_norm"].idxmax()
 
                 if int_subset.loc[int_subset_idxmax, "road_i"].astype(int) in selected_roads:
                     road_selected = int_subset.loc[int_subset_idxmax, "road_j"]
+                    road_pair_selected = int_subset.loc[int_subset_idxmax, "road_i"]
                 else:
                     road_selected = int_subset.loc[int_subset_idxmax, "road_i"]
+                    road_pair_selected = int_subset.loc[int_subset_idxmax, "road_j"]
+
 
 
                 # * First check the degree of danger (check if it's good to buiuld level 2)
-                if self.Roads.loc[road_selected, "danger_m2_norm"] > self.w:
+                if self.Roads.loc[road_selected, "danger_m2_norm"] > self.w * 2.5:
 
                     # * If larger than self.w, check whether the budget constraint is enough
                     if self.B_L_use - self.Roads.loc[road_selected, "length"] * self.w >= 0:
@@ -205,16 +217,19 @@ class Model:
                         # * If enough, subtract B_L_use by length i * self.w, and add i to self.x2_sol
                         self.B_L_use -= self.Roads.loc[road_selected, "length"] * self.w
                         self.x2_sol_idx.append(road_selected)
-                        self.road_utility += Roads.loc[road_selected, "Util"] * self.Roads.loc[road_selected, "danger_m2_norm"]
+                        self.road_utility += self.Roads.loc[road_selected, "Util"] * self.Roads.loc[road_selected, "danger_m2_norm"]
+                        self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
+                        selected_roads_paird.append(road_pair_selected)
+                        self.y_sol_idx.append(int_subset_idxmax)
 
                         continue # * Go to the next iteration
 
                     
 
                 # * If does not pass the first check, then use level 1 bike lane
-                if self.Roads.loc[road_selected, "danger_m2_norm"] <= self.w:
+                if self.Roads.loc[road_selected, "danger_m2_norm"] <= self.w * 2.5:
 
                     # * also check availability
                     if self.B_L_use - self.Roads.loc[road_selected, "length"] >= 0:
@@ -222,8 +237,11 @@ class Model:
                         self.B_L_use -= self.Roads.loc[road_selected, "length"]
                         self.x1_sol_idx.append(road_selected)
                         self.road_utility += self.Roads.loc[road_selected, "Util"]
+                        self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
+                        selected_roads_paird.append(road_pair_selected)
+                        self.y_sol_idx.append(int_subset_idxmax)
 
                     else:
                         candidates_roads.remove(road_selected)
@@ -234,15 +252,15 @@ class Model:
                     continue
 
 
-        # * Calculate the adjacency
-        self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
-        for i in self.x_idx:
-            for j in self.x_idx:
-                pair = f"({i}, {j})"
-                if pair in self.Intersections.index.tolist():
-                    self.y_sol_idx.append(pair)
-                    U_yij = float(self.Intersections.loc[pair, "intersection_demand_norm"])
-                    self.int_utility += U_yij
+        # # * Calculate the adjacency
+        # self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
+        # for i in self.x_idx:
+        #     for j in self.x_idx:
+        #         pair = f"({i}, {j})"
+        #         if pair in self.Intersections.index.tolist():
+        #             self.y_sol_idx.append(pair)
+        #             U_yij = float(self.Intersections.loc[pair, "intersection_demand_norm"])
+        #             self.int_utility += U_yij
 
 
         self.total_utility = self.road_utility * self.mu + self.int_utility *  (1 - self.mu)
@@ -309,7 +327,8 @@ class Model:
             "cal_time_sec": time_spent,
             "result_description": {
                 "num_x1": len(x1_df),
-                "num_x2": len(x2_df)
+                "num_x2": len(x2_df),
+                "num_y": len(self.result['y'])
             },
             "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
         }

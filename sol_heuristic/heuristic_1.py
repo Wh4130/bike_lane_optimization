@@ -137,7 +137,7 @@ class Model:
             max_idx = self.Roads.loc[candidates_roads, "Util"].idxmax()
 
             # * First check the degree of danger (check if it's good to buiuld level 2)
-            if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w:
+            if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w * 2.5:
 
                 # * If larger than self.w, check whether the budget constraint is enough
                 if self.B_L_use - self.Roads.loc[max_idx, "length"] * self.w >= 0:
@@ -153,7 +153,7 @@ class Model:
                 
 
             # * If does not pass the first check, then use level 1 bike lane
-            if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w:
+            if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w * 2.5:
 
                 # * also check availability
                 if self.B_L_use - self.Roads.loc[max_idx, "length"] >= 0:
@@ -176,8 +176,12 @@ class Model:
         self.Intersections["idx_pair"] = "(" + self.Intersections["road_i"].astype(str) + ", " + self.Intersections["road_j"].astype(str) + ")"
 
         self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
-        for i in self.x_idx:
+        for i in tqdm(self.x_idx):
             for j in self.x_idx:
+
+                if i >= j:
+                    continue
+                
                 pair = f"({i}, {j})"
                 if pair in self.Intersections["idx_pair"].tolist():
                     self.y_sol_idx.append(pair)
@@ -205,9 +209,7 @@ class Model:
         print(f"Obj val:              {self.total_utility}")
         print(f"Road Utility:         {self.road_utility}")
         print(f"Intersection Utility: {self.int_utility}")
-        # print(f"Obj val:              {'{:>25}'.format(self.total_utility)}")
-        # print(f"Road Utility:         {'{:>25}'.format(self.road_utility)}")
-        # print(f"Intersection Utility: {'{:>15}'.format(self.int_utility)}")
+
             
 
 
@@ -255,7 +257,8 @@ class Model:
             "cal_time_sec": time_spent,
             "result_description": {
                 "num_x1": len(x1_df),
-                "num_x2": len(x2_df)
+                "num_x2": len(x2_df),
+                "num_y": len(self.result['y'])
             },
             "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
         }

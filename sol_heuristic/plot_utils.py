@@ -34,10 +34,15 @@ def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
         sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 2)].plot(color = "orange", ax = ax, edgecolor=None, hatch = "///")
     except:
         pass
-
-    sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 1)].plot(color = "#66BFF6", ax = ax, edgecolor=None)
-    sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 2)].plot(color = "orange", ax = ax, edgecolor=None)
-
+    try:
+        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 1)].plot(color = "#66BFF6", ax = ax, edgecolor=None)
+    except:
+        pass
+    try:
+        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 2)].plot(color = "orange", ax = ax, edgecolor=None)
+    except:
+        pass
+    
     ax.set_xlim([121.5, 121.59])
     ax.set_ylim([25, 25.085])
 

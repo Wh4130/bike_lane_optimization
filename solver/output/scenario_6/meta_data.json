@@ -1,23 +1,23 @@
 {
  "hyperparams": {
-  "mu": 0.5,
+  "mu": 0.2,
   "alpha": 0.2,
   "B_L": 50000,
-  "w": 3,
+  "w": 2.5,
   "scale": "medium"
  },
  "obj_val": {
-  "total_utility": 4539.87457005022,
-  "road_utility": 2869.466666069426,
-  "int_utility": 1670.4079039807855,
-  "road_util_prop": 0.6320585782258041,
-  "int_util_prop": 0.3679414217741939
+  "total_utility": 6327.564900536849,
+  "road_utility": 697.240208192178,
+  "int_utility": 5630.32469234467,
+  "road_util_prop": 0.11019092165028954,
+  "int_util_prop": 0.8898090783497105
  },
- "cal_time_sec": 5.547022104263306,
+ "cal_time_sec": 243.78349113464355,
  "result_description": {
-  "num_x1": 549,
-  "num_x2": 181,
-  "num_y": 792
+  "num_x1": 920,
+  "num_x2": 0,
+  "num_y": 1633
  },
- "policy_similarity": 0.4886080942412584
+ "policy_similarity": 0.47019107393793264
 }
