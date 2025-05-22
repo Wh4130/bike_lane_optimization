@@ -19,7 +19,7 @@ def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
         title = f'{name.capitalize().replace("_", " ")}; Heuristic Algorithm'
         
         
-    plt.rcParams['hatch.color'] = 'gray'
+    plt.rcParams['hatch.color'] = '#575351'
 
 
     fig, ax = plt.subplots(1, 1, figsize = (15, 15))
@@ -27,22 +27,22 @@ def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
     road_gdf[road_gdf["has_bike_lane"] == 1].plot(color = "lightgray", ax = ax, alpha = 0.8, label = "existing lanes")
 
     try:
-        sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 1)].plot(color = "#66BFF6", ax = ax, edgecolor=None, hatch = "///")
+        sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 1)].plot(color = "#3898EA", ax = ax, edgecolor=None, hatch = "///")
     except:
         pass
     try:
-        sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 2)].plot(color = "orange", ax = ax, edgecolor=None, hatch = "///")
+        sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 2)].plot(color = "#EA7438", ax = ax, edgecolor=None, hatch = "///")
     except:
         pass
     try:
-        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 1)].plot(color = "#66BFF6", ax = ax, edgecolor=None)
+        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 1)].plot(color = "#3898EA", ax = ax, edgecolor=None)
     except:
         pass
     try:
-        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 2)].plot(color = "orange", ax = ax, edgecolor=None)
+        sol[(sol["has_bike_lane"] == 0) & (sol["roadType"] == 2)].plot(color = "#EA7438", ax = ax, edgecolor=None)
     except:
         pass
-    
+
     ax.set_xlim([121.5, 121.59])
     ax.set_ylim([25, 25.085])
 
@@ -51,8 +51,8 @@ def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
 
 
     # Create proxy artists for the legend
-    bike_lane_patch_1 = mpatches.Patch(color='#66BFF6', edgecolor=None, label='Type 1')
-    bike_lane_patch_2 = mpatches.Patch(color='orange', edgecolor=None, label='Type 2')
+    bike_lane_patch_1 = mpatches.Patch(color='#3898EA', edgecolor=None, label='Type 1')
+    bike_lane_patch_2 = mpatches.Patch(color='#EA7438', edgecolor=None, label='Type 2')
 
 
     # Add the legend using the proxy artists

@@ -1,11 +1,23 @@
 import subprocess
+import argparse
+
+def arg_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--alg", type = str, choices = ["naive", "heu"],
+        default = "naive",
+        help = "type of algorithm"
+    )
+    args =  parser.parse_args()
+    return args
+
 
 # Command as a list of strings (recommended to avoid shell injection)
-Commands = [
-    # ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_1", "--B_length", "25000"],
-    # ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_2"],
-    # ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_3", "--B_length", "100000"],
-    # ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_4", "--mu", "0.5"],
+Commands1 = [
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_1", "--B_length", "25000"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_2"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_3", "--B_length", "100000"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_4", "--mu", "0.5"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_5", "--mu", "0.8"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6", "--w", "2.5"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7", "--w", "3.5"],
@@ -15,7 +27,9 @@ Commands = [
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_4_np", "--mu", "0.5", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_5_np", "--mu", "0.8", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6_np", "--w", "2.5", "--remove_existing", "--B_length", "10000"],
-    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7_np", "--w", "3.5", "--remove_existing", "--B_length", "10000"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7_np", "--w", "3.5", "--remove_existing", "--B_length", "10000"]
+]
+Commands2 = [
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_1", "--B_length", "25000"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_2"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_3", "--B_length", "100000"],
@@ -33,6 +47,12 @@ Commands = [
 ]
 
 if __name__ == "__main__":
+    args = arg_parser()
+    if args.alg == "naive":
+        Commands = Commands1
+    elif args.alg == "heu":
+        Commands = Commands2
+        
     for i, command in enumerate(Commands):
 
         print(f"====================================")

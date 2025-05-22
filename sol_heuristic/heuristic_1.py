@@ -123,8 +123,12 @@ class Model:
 
     @decorator_timer
     def optimize(self):
+        self.Intersections["idx_pair"] = "(" + self.Intersections["road_i"].astype(str) + ", " + self.Intersections["road_j"].astype(str)  + ")"
+        self.Intersections.set_index("idx_pair", inplace = True)
         
-        candidates_roads = self.Roads.index.tolist()
+        candidates_roads         = self.Roads.index.tolist()
+        selected_roads_paird     = []
+        selected_roads           = []
         self.B_L_use = self.B_L
 
 
@@ -134,8 +138,35 @@ class Model:
                 print("No more candidate roads to consider.")
                 break
 
+            
             max_idx = self.Roads.loc[candidates_roads, "Util"].idxmax()
 
+            XOR = (self.Intersections["road_i"] == max_idx) ^ (self.Intersections["road_j"] == max_idx)
+            int_subset = self.Intersections.loc[XOR, :]
+            partners = []
+            for _, row in int_subset.iterrows():
+                if row["road_i"] == max_idx:
+                    partners.append(row["road_j"])
+                else:
+                    partners.append(row["road_i"])
+            partners = list(set(partners))
+
+            # * Check if the degree constraint is violated:
+            count = 0
+            stop_status = False
+            for partner in partners:
+                if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                    count += 1
+                if count > 2:
+                    stop_status = True       # * If more than two paired roads are built, then break
+                    break
+            if stop_status:
+                candidates_roads.remove(max_idx)
+                continue
+
+
+
+            built = False
             # * First check the degree of danger (check if it's good to buiuld level 2)
             if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w * 2.5:
 
@@ -147,11 +178,11 @@ class Model:
                     self.x2_sol_idx.append(max_idx)
                     self.road_utility += Roads.loc[max_idx, "Util"] * self.Roads.loc[max_idx, "danger_m2_norm"]
                     candidates_roads.remove(max_idx)
+                    built = True
 
                     continue # * Go to the next iteration
 
-                
-
+            
             # * If does not pass the first check, then use level 1 bike lane
             if self.Roads.loc[max_idx, "danger_m2_norm"] <= self.w * 2.5:
 
@@ -162,6 +193,7 @@ class Model:
                     self.x1_sol_idx.append(max_idx)
                     self.road_utility += self.Roads.loc[max_idx, "Util"]
                     candidates_roads.remove(max_idx)
+                    built = True
 
                 else:
                     candidates_roads.remove(max_idx)
@@ -171,22 +203,16 @@ class Model:
                 candidates_roads.remove(max_idx)
                 continue
 
+            # * Finally, if the road with max_id is built, then add the intersection utility that is benefited 
+            if built == True:
+                for partner in partners:
+                    if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                        pair = "(" + ", ".join([str(_) for _ in sorted([partner, max_idx], reverse = False)]) + ")"
+                        self.int_utility += self.Intersections.loc[ pair, "intersection_demand_norm"]
+                        self.y_sol_idx.append(pair)
 
-        # * Calculate the adjacency
-        self.Intersections["idx_pair"] = "(" + self.Intersections["road_i"].astype(str) + ", " + self.Intersections["road_j"].astype(str) + ")"
 
-        self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
-        for i in tqdm(self.x_idx):
-            for j in self.x_idx:
 
-                if i >= j:
-                    continue
-                
-                pair = f"({i}, {j})"
-                if pair in self.Intersections["idx_pair"].tolist():
-                    self.y_sol_idx.append(pair)
-                    U_yij = float(self.Intersections.loc[self.Intersections["idx_pair"] == pair, "intersection_demand_norm"])
-                    self.int_utility += U_yij
 
 
         self.total_utility = self.road_utility * self.mu + self.int_utility *  (1 - self.mu)
