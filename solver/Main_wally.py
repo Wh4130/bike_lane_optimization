@@ -184,7 +184,7 @@ class Model:
         # at most two reads connected to each intersection:
         for i in tqdm(Intersections['road_i'].unique()):
             # find all road_j’s paired with this i
-            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 1)
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
 
 
         # area coverage constraint
@@ -357,54 +357,79 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    try:
-        Roads = gpd.read_parquet(args.road_data)
-        A = gpd.read_parquet(args.adj_mat)
-        MRTs = gpd.read_parquet(args.mrt)
-    except:
-        # if data cannot be loaded from tha above path, try without the first . in the path string
-        Roads = gpd.read_parquet(args.road_data[1:])
-        A = gpd.read_parquet(args.adj_mat[1:])
-        MRTs = gpd.read_parquet(args.mrt[1:])
-    
+    Roads = gpd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
+    A = gpd.read_parquet(args.adj_mat)
 
-    # * filter the data by argument option "scale"
-    if args.scale == "small":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
-    elif args.scale == "medium":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
-    elif args.scale == "large":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
+    if not args.exp_mode:
+        # * filter the data by argument option "scale"
+        if args.scale == "small":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
+        elif args.scale == "medium":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        elif args.scale == "large":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
 
-    # * filter the data by argument option "remove_existing"
-    if args.remove_existing:
-        Roads = Roads[Roads["has_bike_lane"] == 0]
-    
+        # * filter the data by argument option "remove_existing"
+        if args.remove_existing:
+            Roads = Roads[Roads["has_bike_lane"] == 0]
 
-    #print(A.head())
-    
-    # filter to only consider adjacency of roads in the Roads set
-    A = A[
-        A["road_i"].isin(Roads.index) 
-        & A["road_j"].isin(Roads.index)
-    ]
-    
-    M = Model(args = args)
-    
-    M.setup(A, Roads, MRTs, args)
-    
-    result = M.optimize()
+        #print(A.head())
+        
+        # filter to only consider adjacency of roads in the Roads set
+        A = A[
+            A["road_i"].isin(Roads.index) 
+            & A["road_j"].isin(Roads.index)
+        ]
+        
+        M = Model(args = args)
+        M.setup(A, Roads, args)
+        result = M.optimize()
+        M.save_result(time_spent = result[1])
+        M.visualizeSolution()
 
-    M.save_result(time_spent = result[1])
-    M.visualizeSolution()
+    else:
+        # TODO Initialize dataframe for storing the results (30 times)
+        for _ in range(30):
+            pass
+            # TODO Link the data generation function.
+            """
+            Generate the data with normal size (don't scale it)
+            and then scale it to 'medium'!
+            
+            - A (gdf):
+                1. intersetion_demand_norm (N(3, 1) ?)
+            
+            - Roads (gdf):
+                1. demand_norm (N(3, 1) ?)
+                2. width       (N(15, 10) ?)
+                3. danger_norm (N(3, 1) ?)
+                4. length (to calculate the actual cost)
+                5. length_norm (normalized by length) 
+        
 
-    
-    # visualize result
-    # M.visualizeSolution()
-    
-    
-    
-    
-    # M.save_result(time_spent = result[1])
+            len(A) = 36590, len(Roads) = 7666. Maybe we should generate data with length like this. Not sure if the index of them should be the same.
+            """
+            #! Roads, A = generateInstance()
+            #! Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        
+
+            # * filter the data by argument option "remove_existing"
+            if args.remove_existing:
+                Roads = Roads[Roads["has_bike_lane"] == 0]
+
+            #print(A.head())
+            
+            # filter to only consider adjacency of roads in the Roads set
+            A = A[
+                A["road_i"].isin(Roads.index) 
+                & A["road_j"].isin(Roads.index)
+            ]
+            
+            M = Model(args = args)
+            M.setup(A, Roads, args)
+            result = M.optimize()
+            # TODO save the result to the container
+            # M.save_result(time_spent = result[1])
+            # M.visualizeSolution()
 

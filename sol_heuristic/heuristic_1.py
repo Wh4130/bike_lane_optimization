@@ -24,6 +24,10 @@ For each iteration, it does:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--exp_mode", action = "store_true",
+        help = "turn on the experiment mode"
+    )
+    parser.add_argument(
         "--road_data", type = str,
         default = "./data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
@@ -157,7 +161,7 @@ class Model:
             for partner in partners:
                 if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
                     count += 1
-                if count > 1:
+                if count > 2:
                     stop_status = True       # * If more than two paired roads are built, then break
                     break
             if stop_status:
@@ -317,31 +321,77 @@ if __name__ == "__main__":
     Roads.set_index('roadID', inplace=True)
     A = gpd.read_parquet(args.adj_mat)
 
-    # * filter the data by argument option "scale"
-    if args.scale == "small":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
-    elif args.scale == "medium":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
-    elif args.scale == "large":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
+    if not args.exp_mode:
+        # * filter the data by argument option "scale"
+        if args.scale == "small":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
+        elif args.scale == "medium":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        elif args.scale == "large":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
 
-    # * filter the data by argument option "remove_existing"
-    if args.remove_existing:
-        Roads = Roads[Roads["has_bike_lane"] == 0]
+        # * filter the data by argument option "remove_existing"
+        if args.remove_existing:
+            Roads = Roads[Roads["has_bike_lane"] == 0]
 
-    #print(A.head())
-    
-    # filter to only consider adjacency of roads in the Roads set
-    A = A[
-        A["road_i"].isin(Roads.index) 
-        & A["road_j"].isin(Roads.index)
-    ]
-    
-    M = Model(args = args)
-    M.setup(A, Roads, args)
-    result = M.optimize()
-    M.save_result(time_spent = result[1])
-    M.visualizeSolution()
+        #print(A.head())
+        
+        # filter to only consider adjacency of roads in the Roads set
+        A = A[
+            A["road_i"].isin(Roads.index) 
+            & A["road_j"].isin(Roads.index)
+        ]
+        
+        M = Model(args = args)
+        M.setup(A, Roads, args)
+        result = M.optimize()
+        M.save_result(time_spent = result[1])
+        M.visualizeSolution()
+
+    else:
+        # TODO Initialize dataframe for storing the results (30 times)
+        for _ in range(30):
+            pass
+            # TODO Link the data generation function.
+            """
+            Generate the data with normal size (don't scale it)
+            and then scale it to 'medium'!
+            
+            - A (gdf):
+                1. intersetion_demand_norm (N(3, 1) ?)
+            
+            - Roads (gdf):
+                1. demand_norm (N(3, 1) ?)
+                2. width       (N(15, 10) ?)
+                3. danger_norm (N(3, 1) ?)
+                4. length (to calculate the actual cost)
+                5. length_norm (normalized by length) 
+        
+
+            len(A) = 36590, len(Roads) = 7666. Maybe we should generate data with length like this. Not sure if the index of them should be the same.
+            """
+            #! Roads, A = generateInstance()
+            #! Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        
+
+            # * filter the data by argument option "remove_existing"
+            if args.remove_existing:
+                Roads = Roads[Roads["has_bike_lane"] == 0]
+
+            #print(A.head())
+            
+            # filter to only consider adjacency of roads in the Roads set
+            A = A[
+                A["road_i"].isin(Roads.index) 
+                & A["road_j"].isin(Roads.index)
+            ]
+            
+            M = Model(args = args)
+            M.setup(A, Roads, args)
+            result = M.optimize()
+            # TODO save the result to the container
+            # M.save_result(time_spent = result[1])
+            # M.visualizeSolution()
 
     
     
