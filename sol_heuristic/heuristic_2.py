@@ -181,7 +181,7 @@ class Model:
             # * If selected_roads is not empty, search among intersections where one road is selected, find the pair with the highest utility, and then select the other road in that pair.
             else:
                 max_adj_y_constr = pd.Series(selected_roads_paird).value_counts()
-                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr == 2].index.tolist()
+                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr >= 1].index.tolist()
                 XOR = ((self.Intersections["road_i"].isin(selected_roads) ^ self.Intersections["road_j"].isin(selected_roads)) 
                        & 
                        (self.Intersections["road_i"].isin(candidates_roads) ^ self.Intersections["road_j"].isin(candidates_roads))

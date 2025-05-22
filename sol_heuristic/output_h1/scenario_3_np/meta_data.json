@@ -7,17 +7,17 @@
   "scale": "medium"
  },
  "obj_val": {
-  "total_utility": 487.4610137301088,
-  "road_utility": 613.9809633877874,
-  "int_utility": 455.8310263156891,
-  "road_util_prop": 1.259548858460563,
-  "int_util_prop": 0.9351127853848591
+  "total_utility": 330.5469160221723,
+  "road_utility": 594.9512348883882,
+  "int_utility": 264.4458363056183,
+  "road_util_prop": 1.799899518192692,
+  "int_util_prop": 0.8000251204518268
  },
- "cal_time_sec": 0.20484685897827148,
+ "cal_time_sec": 0.314014196395874,
  "result_description": {
-  "num_x1": 125,
+  "num_x1": 122,
   "num_x2": 1,
-  "num_y": 89
+  "num_y": 53
  },
  "policy_similarity": null
 }

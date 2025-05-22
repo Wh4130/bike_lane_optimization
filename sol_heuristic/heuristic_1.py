@@ -157,7 +157,7 @@ class Model:
             for partner in partners:
                 if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
                     count += 1
-                if count > 2:
+                if count > 1:
                     stop_status = True       # * If more than two paired roads are built, then break
                     break
             if stop_status:

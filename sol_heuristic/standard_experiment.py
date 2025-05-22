@@ -4,7 +4,7 @@ import argparse
 def arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--alg", type = str, choices = ["naive", "heu"],
+        "--alg", type = str, choices = ["naive", "heu", "both"],
         default = "naive",
         help = "type of algorithm"
     )
@@ -52,7 +52,9 @@ if __name__ == "__main__":
         Commands = Commands1
     elif args.alg == "heu":
         Commands = Commands2
-        
+    elif args.alg == "both":
+        Commands = Commands1 + Commands2
+
     for i, command in enumerate(Commands):
 
         print(f"====================================")

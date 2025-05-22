@@ -184,7 +184,7 @@ class Model:
         # at most two reads connected to each intersection:
         for i in tqdm(Intersections['road_i'].unique()):
             # find all road_j’s paired with this i
-            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 1)
 
 
         # area coverage constraint
