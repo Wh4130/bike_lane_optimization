@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'v
 from visualizeSolution import plot_bike_lane_solution
 
 
+
 """
 What's different from Main.py?
 1. Newest objective function and constraints on overleaf
@@ -31,17 +32,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "./data/processed/road_data_adj_count_usage.parquet",
+        default = "../data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "./data/processed/adjacency_demand_buffered.parquet",
+        default = "../data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
         "--mrt", type = str,
-        default = "./data/processed/mrt_stations.parquet",
+        default = "../data/processed/mrt_stations.parquet",
         help = "full data path to the mrt station data"
     )
     parser.add_argument(
@@ -101,24 +102,41 @@ def decorator_timer(some_function):
     return wrapper
 
 
+def read_parquet_(filename):
+    try:
+        return gpd.read_parquet(filename)
+    except:
+        return gpd.read_parquet(filename)[1:]
+
+
 class Model:
     def __init__(self, args):
         self.model = gp.Model('BikelaneOptimization')
         self.model.setParam('OutputFlag', 0)
         self.args = args
-        if not self.args.log:
+        
+        # read parameters from args
+        try:
+            
+            if not self.args.log:
+                self.model.Params.LogToConsole = 0
+            
+            self.mu    = args.mu
+            self.alpha = args.alpha
+            self.B_L   = args.B_length
+            self.w     = args.w
+            self.tau   = args.tau
+            
+        except:
+            # parameters need to be set manually elsewhere in this case!!
             self.model.Params.LogToConsole = 0
+        
         self.verbose = True
         self.result = {}
         
     @decorator_timer
-    def setup(self, Intersections, Roads, MRTs, args):
+    def setup(self, Intersections, Roads, MRTs):
         self.Roads = Roads
-        self.mu    = args.mu
-        self.alpha = args.alpha
-        self.B_L   = args.B_length
-        self.w     = args.w
-        self.tau   = args.tau
         
         # set of all roads and intersections
         self.roadIDs = Roads.index 
@@ -243,7 +261,10 @@ class Model:
 
             print("======================= Optimization Result =======================")
             params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
-            values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
+            try:
+                values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
+            except:
+                values = [self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"]
             print(f"---------------------- parameters --------------------------------")
             print("    ".join("{:>6}".format(val) for val in params))
             print("    ".join("{:>6}".format(val) for val in values))
@@ -322,13 +343,33 @@ class Model:
             
     def visualizeSolution(self):
         if self.model.status == GRB.OPTIMAL:    
+            try:
+                Roads = read_parquet_(self.args.road_data)
+                plot_map(
+                    self.args.exp_name,
+                    Roads, self.sol_gdf,
+                    self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+                )
+            except:
+                Roads = read_parquet_("../../data/processed/road_data_adj_count_usage.parquet")
+                # * saving solution of roads
+                x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+                x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
 
-            Roads = gpd.read_parquet(self.args.road_data)
-            plot_map(
-                self.args.exp_name,
-                Roads, self.sol_gdf,
-                self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
-            )
+                x1_df_merged = pd.merge(x1_df, Roads, how = 'left', on = 'roadID')
+                x2_df_merged = pd.merge(x2_df, Roads, how = 'left', on = 'roadID')
+
+                result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+                result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
+
+                self.sol_gdf = result_gdf
+                
+                plot_map(
+                    "custom",
+                    Roads, self.sol_gdf,
+                    self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"
+                )
+            
 
             # # call function from Nick
             # assert self.result != {}, "please run optimization first so there would be result to save."
@@ -355,13 +396,15 @@ class Model:
 
 if __name__ == "__main__":
     args = parse_args()
+    print(args)
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    Roads = gpd.read_parquet(args.road_data)
+    Roads = read_parquet_(args.road_data)
     Roads.set_index('roadID', inplace=True)
-    A = gpd.read_parquet(args.adj_mat)
+    A = read_parquet_(args.adj_mat)
+    MRTs = read_parquet_('../data/processed/mrt_stations.parquet')
 
-    if not args.exp_mode:
+    if not args.exp_name:
         # * filter the data by argument option "scale"
         if args.scale == "small":
             Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
@@ -383,7 +426,7 @@ if __name__ == "__main__":
         ]
         
         M = Model(args = args)
-        M.setup(A, Roads, args)
+        M.setup(A, Roads, MRTs)
         result = M.optimize()
         M.save_result(time_spent = result[1])
         M.visualizeSolution()
@@ -427,7 +470,7 @@ if __name__ == "__main__":
             ]
             
             M = Model(args = args)
-            M.setup(A, Roads, args)
+            M.setup(A, Roads, MRTs)
             result = M.optimize()
             # TODO save the result to the container
             # M.save_result(time_spent = result[1])
