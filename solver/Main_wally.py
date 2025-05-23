@@ -31,17 +31,17 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--road_data", type = str,
-        default = "../data/processed/road_data_adj_count_usage.parquet",
+        default = "./data/processed/road_data_adj_count_usage.parquet",
         help = "full data path to the road data"
     )
     parser.add_argument(
         "--adj_mat", type = str,
-        default = "../data/processed/adjacency_demand_buffered.parquet",
+        default = "./data/processed/adjacency_demand_buffered.parquet",
         help = "full data path to the adjacency matrix data"
     )
     parser.add_argument(
         "--mrt", type = str,
-        default = "../data/processed/mrt_stations.parquet",
+        default = "./data/processed/mrt_stations.parquet",
         help = "full data path to the mrt station data"
     )
     parser.add_argument(
@@ -77,6 +77,10 @@ def parse_args():
     parser.add_argument(
         "--log", action = "store_true",
         help = "show log to console"
+    )
+    parser.add_argument(
+        "--remove_existing", action = "store_true",
+        help = "whether to remove existing bike lanes"
     )
     parser.add_argument(
         "--exp_name", type = str, 
@@ -178,7 +182,7 @@ class Model:
         #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
         
         # at most two reads connected to each intersection:
-        for i in Intersections['road_i'].unique():
+        for i in tqdm(Intersections['road_i'].unique()):
             # find all road_j’s paired with this i
             self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 1)
 
@@ -261,9 +265,10 @@ class Model:
     def save_result(self, time_spent):
         # * making directory
         if self.args.exp_name != "default":
-            os.makedirs(f"solver/output/{self.args.exp_name}", exist_ok = True)
+            name = self.args.exp_name
         else:
-            os.makedirs(f'solver/output/{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', exist_ok = True)
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        os.makedirs(f"solver/output/{name}", exist_ok = True)
 
         assert self.result != {}, "please run optimization first so there would be result to save."
 
@@ -276,8 +281,10 @@ class Model:
 
         result_gdf = pd.concat([x1_df_merged, x2_df_merged])
         result_gdf = gpd.GeoDataFrame(result_gdf, geometry = "geometry")
-        result_gdf.to_parquet(f"solver/output/{self.args.exp_name}/roads_sol.parquet")
-        
+
+        result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
+        self.sol_gdf = result_gdf
+
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -298,8 +305,10 @@ class Model:
             "cal_time_sec": time_spent,
             "result_description": {
                 "num_x1": len(x1_df),
-                "num_x2": len(x2_df)
-            }
+                "num_x2": len(x2_df),
+                "num_y" : len(self.result["y"])
+            },
+            "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
         }
 
         with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
@@ -313,22 +322,34 @@ class Model:
             
     def visualizeSolution(self):
         if self.model.status == GRB.OPTIMAL:    
-            # call function from Nick
-            assert self.result != {}, "please run optimization first so there would be result to save."
 
-            # * saving solution of roads
-            x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
-            x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+            Roads = gpd.read_parquet(self.args.road_data)
+            plot_map(
+                self.args.exp_name,
+                Roads, self.sol_gdf,
+                self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+            )
 
-            x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
-            x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
+            # # call function from Nick
+            # assert self.result != {}, "please run optimization first so there would be result to save."
 
-            result_gdf = pd.concat([x1_df_merged, x2_df_merged])
+            # # * saving solution of roads
+            # x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
+            # x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
+
+            # x1_df_merged = pd.merge(x1_df, self.Roads, how = 'left', on = 'roadID')
+            # x2_df_merged = pd.merge(x2_df, self.Roads, how = 'left', on = 'roadID')
+
+            # result_gdf = pd.concat([x1_df_merged, x2_df_merged])
             
-            roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
+            # roads = gpd.read_parquet("../data/processed/road_data_adj_count_usage.parquet")
             
-            fig, ax = plot_bike_lane_solution(result_gdf, roads)
-            plt.show()
+            # fig, ax = plot_bike_lane_solution(result_gdf, roads)
+            # plt.show()
+            
+            print("Visualization done!")
+            
+
     
 
 
@@ -336,46 +357,79 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    try:
-        Roads = gpd.read_parquet(args.road_data)
-        A = gpd.read_parquet(args.adj_mat)
-        MRTs = gpd.read_parquet(args.mrt)
-    except:
-        # if data cannot be loaded from tha above path, try without the first . in the path string
-        Roads = gpd.read_parquet(args.road_data[1:])
-        A = gpd.read_parquet(args.adj_mat[1:])
-        MRTs = gpd.read_parquet(args.mrt[1:])
-    
+    Roads = gpd.read_parquet(args.road_data)
     Roads.set_index('roadID', inplace=True)
+    A = gpd.read_parquet(args.adj_mat)
 
-    # * filter the data by argument option "scale"
-    if args.scale == "small":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
-    elif args.scale == "medium":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
-    elif args.scale == "large":
-        Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
+    if not args.exp_mode:
+        # * filter the data by argument option "scale"
+        if args.scale == "small":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
+        elif args.scale == "medium":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        elif args.scale == "large":
+            Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.25)]
 
-    #print(A.head())
-    
-    # filter to only consider adjacency of roads in the Roads set
-    A = A[
-        A["road_i"].isin(Roads.index) 
-        & A["road_j"].isin(Roads.index)
-    ]
-    
-    M = Model(args = args)
-    
-    M.setup(A, Roads, MRTs, args)
-    
-    result = M.optimize()
-    
-    
-    # visualize result
-    M.visualizeSolution()
-    
-    
-    
-    
-    # M.save_result(time_spent = result[1])
+        # * filter the data by argument option "remove_existing"
+        if args.remove_existing:
+            Roads = Roads[Roads["has_bike_lane"] == 0]
+
+        #print(A.head())
+        
+        # filter to only consider adjacency of roads in the Roads set
+        A = A[
+            A["road_i"].isin(Roads.index) 
+            & A["road_j"].isin(Roads.index)
+        ]
+        
+        M = Model(args = args)
+        M.setup(A, Roads, args)
+        result = M.optimize()
+        M.save_result(time_spent = result[1])
+        M.visualizeSolution()
+
+    else:
+        # TODO Initialize dataframe for storing the results (30 times)
+        for _ in range(30):
+            pass
+            # TODO Link the data generation function.
+            """
+            Generate the data with normal size (don't scale it)
+            and then scale it to 'medium'!
+            
+            - A (gdf):
+                1. intersetion_demand_norm (N(3, 1) ?)
+            
+            - Roads (gdf):
+                1. demand_norm (N(3, 1) ?)
+                2. width       (N(15, 10) ?)
+                3. danger_norm (N(3, 1) ?)
+                4. length (to calculate the actual cost)
+                5. length_norm (normalized by length) 
+        
+
+            len(A) = 36590, len(Roads) = 7666. Maybe we should generate data with length like this. Not sure if the index of them should be the same.
+            """
+            #! Roads, A = generateInstance()
+            #! Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+        
+
+            # * filter the data by argument option "remove_existing"
+            if args.remove_existing:
+                Roads = Roads[Roads["has_bike_lane"] == 0]
+
+            #print(A.head())
+            
+            # filter to only consider adjacency of roads in the Roads set
+            A = A[
+                A["road_i"].isin(Roads.index) 
+                & A["road_j"].isin(Roads.index)
+            ]
+            
+            M = Model(args = args)
+            M.setup(A, Roads, args)
+            result = M.optimize()
+            # TODO save the result to the container
+            # M.save_result(time_spent = result[1])
+            # M.visualizeSolution()
 

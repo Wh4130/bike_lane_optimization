@@ -9,15 +9,22 @@ To run all pre-defined experiments by once, please run the following command in 
 
 The parameter $\tau$ (tau) is not our main focus for comparison. However, for some scenario setting, low $\tau$ makes the feasible region too small and thus the program becomes infeasible. After some testing, we determine that $\tau = 300$ is the best level as it makes all scenario feasible.
 
-## Solver (Gurobi)
-|sID|description | mu     | alpha      | B_length | w | tau | scale
-|-| - | - |- |- |- |- |- |
-|1|Low Budget | 0.2 | 0.2 | 25,000 | 3 | 300 | medium
-|2|Medium Budget | 0.2 | 0.2 | 50,000 | 3 | 300 | medium
-|3|High Budget | 0.2 | 0.2 | 100,000 | 3 | 300 | medium
-|4|Small Scale | 0.2 | 0.2 | 50000 | 3 | 300 | small
-|5|Large Scale | 0.2 | 0.2 | 50000 | 3 | 300 | large
-|6|Balanced Road and Adjacency| 0.5 | 0.2 | 50000 | 3 | 300 | medium
-|7|Lower Preference toward Adjacency Utility| 0.8 | 0.2 | 50000 | 3 | 300 | medium
-|8|Lower Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 50000 | 2.5 | 300 | medium
-|9|Higher Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 50000 | 3.5 | 300 | medium
+## Experiments
+|sID|description | mu     | alpha      | B_length | w | scale | rm_ex |
+|-| - | - |- |- |- |- | - |
+|1|Low Budget | 0.2 | 0.2 | 25,000 | 3 | medium | False
+|2|Medium Budget | 0.2 | 0.2 | 50,000 | 3 | medium | False
+|3|High Budget | 0.2 | 0.2 | 100,000 | 3| medium |False
+|4|Balanced Road and Adjacency| 0.5 | 0.2 | 50000 | 3 | medium | False
+|5|Lower Preference toward Adjacency Utility| 0.8 | 0.2 | 50000 | 3 | medium | False
+|6|Lower Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 50000 | 2.5  | medium | False
+|7|Higher Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 50000 | 3.5 | medium |False
+|1_np|Low Budget | 0.2 | 0.2 | 5,000 | 3 | medium | True
+|2_np|Medium Budget | 0.2 | 0.2 | 10,000 | 3 | medium | True
+|3_np|High Budget | 0.2 | 0.2 | 15,000 | 3| medium |True
+|4_np|Balanced Road and Adjacency| 0.5 | 0.2 | 50000 | 3 | medium | True
+|5_np|Lower Preference toward Adjacency Utility| 0.8 | 0.2 | 50000 | 3 | medium | True
+|6_np|Lower Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 10000 | 2.5  | medium | True
+|7_np|Higher Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 10000 | 3.5 | medium |True
+
+Experiment 4_np, 5_np are not implemented for our heuristic algorithms, as the preference toward adjacency does not change out decision process.
