@@ -1,3 +1,5 @@
+
+import subprocess
 import geopandas as gpd
 import sys, os
 
@@ -44,3 +46,15 @@ if __name__ == "__main__":
         result = M.optimize()
         M.visualizeSolution(path="raw/"+str(id)+"_mu_"+str(M.mu)+".png")
     
+    
+    """
+    render with ffmpeg:
+    
+    ffmpeg -y \
+        -framerate 20 \
+        -pattern_type glob -i "raw/*_mu_*.png" \
+        -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+        -c:v libx264 -pix_fmt yuv420p \
+        out.mp4
+            
+            """
