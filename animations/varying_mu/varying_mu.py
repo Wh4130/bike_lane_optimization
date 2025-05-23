@@ -28,15 +28,19 @@ if __name__ == "__main__":
         & A["road_j"].isin(Roads.index)
     ]
     
-    M = Model(None)
+    for id in range(101):
+        mu = id / 100
+        print(id, mu)
     
-    M.mu    = 0.5
-    M.alpha = 0.2
-    M.B_L   = 10000
-    M.w     = 3
-    M.tau   = 300
-    
-    M.setup(A, Roads, MRTs)
-    result = M.optimize()
-    M.visualizeSolution()
+        M = Model(None)
+        
+        M.mu    = mu
+        M.alpha = 0.2
+        M.B_L   = 10000
+        M.w     = 3
+        M.tau   = 300
+        
+        M.setup(A, Roads, MRTs)
+        result = M.optimize()
+        M.visualizeSolution(path="raw/"+str(id)+"_mu_"+str(M.mu)+".png")
     

@@ -341,7 +341,7 @@ class Model:
         if self.verbose:
             print(message)
             
-    def visualizeSolution(self):
+    def visualizeSolution(self, path=None):
         if self.model.status == GRB.OPTIMAL:    
             try:
                 Roads = read_parquet_(self.args.road_data)
@@ -364,11 +364,18 @@ class Model:
 
                 self.sol_gdf = result_gdf
                 
-                plot_map(
-                    "custom",
-                    Roads, self.sol_gdf,
-                    self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"
-                )
+                if path != None:
+                    plot_map(
+                        "custom",
+                        Roads, self.sol_gdf,
+                        self.mu, self.alpha, self.B_L, self.w, self.tau, "custom", path=path
+                    )
+                else:
+                    plot_map(
+                        "custom",
+                        Roads, self.sol_gdf,
+                        self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"
+                    )
             
 
             # # call function from Nick

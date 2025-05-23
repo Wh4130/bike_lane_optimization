@@ -68,10 +68,10 @@ def euclidean_n2(q: tuple, road: tuple):
     return dist
 
 
-def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
+def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
 
-
-    path = f"solver/output/{name}/{name}_result.png"
+    if path == None:
+        path = f"solver/output/{name}/{name}_result.png"
     title = f'{name.capitalize().replace("_", " ")}; Solver'
         
         
@@ -121,7 +121,7 @@ def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
 
 
     text = f"Road Segments filled with Gray Slash / refer to already existing bike lanes" 
-    params = rf"$$\mu = {mu};   \alpha = {alpha};   B^L = {B_L};   w = {w};   \tau = {tau};   scale = {scale}$$"
+    params = rf"$$\mu = {mu:1.2f};   \alpha = {alpha};   B^L = {B_L};   w = {w};   \tau = {tau};   scale = {scale}$$"
     ax.text(0.5, 0.98, text,
             horizontalalignment='center', 
             verticalalignment='top',      
