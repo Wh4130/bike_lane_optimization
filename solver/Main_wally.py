@@ -17,6 +17,8 @@ from visualizeSolution import plot_bike_lane_solution
 
 
 
+
+
 """
 What's different from Main.py?
 1. Newest objective function and constraints on overleaf
@@ -30,6 +32,10 @@ What's missing still?
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--exp_mode", action = "store_true",
+        help = "turn on the experiment mode"
+    )
     parser.add_argument(
         "--road_data", type = str,
         default = "../data/processed/road_data_adj_count_usage.parquet",
@@ -109,7 +115,7 @@ def read_parquet_(filename):
         return gpd.read_parquet(filename)[1:]
 
 
-class Model:
+class Solver:
     def __init__(self, args):
         self.model = gp.Model('BikelaneOptimization')
         self.model.setParam('OutputFlag', 0)
@@ -121,13 +127,14 @@ class Model:
             if not self.args.log:
                 self.model.Params.LogToConsole = 0
             
-            self.mu    = args.mu
-            self.alpha = args.alpha
-            self.B_L   = args.B_length
-            self.w     = args.w
-            self.tau   = args.tau
+            self.mu    = self.args.mu
+            self.alpha = self.args.alpha
+            self.B_L   = self.args.B_length
+            self.w     = self.args.w
+            self.tau   = self.args.tau
             
-        except:
+        except Exception as e:
+            print(e)
             # parameters need to be set manually elsewhere in this case!!
             self.model.Params.LogToConsole = 0
         
@@ -135,7 +142,7 @@ class Model:
         self.result = {}
         
     @decorator_timer
-    def setup(self, Intersections, Roads, MRTs):
+    def setup(self, Intersections, Roads):
         self.Roads = Roads
         
         # set of all roads and intersections
@@ -147,15 +154,18 @@ class Model:
         
         
         # ========= Decision variables ========================================
-        self.print_("Setting up variables...")
-        self.x1 = self.model.addVars(self.roadIDs, name="x1", vtype=GRB.BINARY)
-        self.x2 = self.model.addVars(self.roadIDs, name="x2", vtype=GRB.BINARY)
+        if not self.args.exp_mode:
+            self.print_("Setting up variables...")
+        vtype = GRB.BINARY if not self.args.exp_mode else GRB.CONTINUOUS
+        self.x1 = self.model.addVars(self.roadIDs, name="x1", vtype=vtype)
+        self.x2 = self.model.addVars(self.roadIDs, name="x2", vtype=vtype)
         
-        self.y = self.model.addVars(list(Intersections[['road_i','road_j']].itertuples(index=False, name=None)), name="y", vtype=GRB.BINARY)
+        self.y = self.model.addVars(list(Intersections[['road_i','road_j']].itertuples(index=False, name=None)), name="y", vtype=vtype)
             
         
         # ========= Objective function ========================================
-        self.print_("Setting up objective function...")
+        if not self.args.exp_mode:
+            self.print_("Setting up objective function...")
         
         roadUtility = gp.quicksum(
             (Roads.loc[i, "length_norm"] ** (self.alpha)) * (Roads.loc[i, "roadDemand_m2_norm"] ** (1 - self.alpha)) * (self.x1[i] + 3 * self.x2[i])
@@ -176,7 +186,8 @@ class Model:
         
         
         # ========= Constraints ===============================================
-        self.print_("Setting up constraints...")
+        if not self.args.exp_mode:
+            self.print_("Setting up constraints...")
         
         # Construction cost constraint
         self.model.addConstr(gp.quicksum(((1 * self.x1[i] + self.w * self.x2[i]) * Roads.loc[i, "length"]) for i in self.roadIDs) <= self.B_L, name="totalCost")  # simple contraint for testing: only build 4 roads
@@ -200,15 +211,15 @@ class Model:
         #self.model.addConstr(gp.quicksum(self.y[i, j] for i, j in Intersections[['road_i','road_j']].itertuples(index=False, name=None)) + 1 == gp.quicksum((self.x1[i] + self.x2[i]) for i in self.roadIDs))
         
         # at most two reads connected to each intersection:
-        for i in tqdm(Intersections['road_i'].unique()):
+        for i in Intersections['road_i'].unique():
             # find all road_j’s paired with this i
-            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 1)
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
 
 
         # area coverage constraint
-        Roads_trs = proj_to_xy(Roads, "road")
-        MRT_trs   = proj_to_xy(MRTs, "other")
-        qs = []
+        # Roads_trs = proj_to_xy(Roads, "road")
+        # MRT_trs   = proj_to_xy(MRTs, "other")
+        # qs = []
         # print("Adding area coverage constraint...")
         # for _, q in tqdm(MRT_trs.iterrows(), total = len(MRT_trs)):
         #     potential_xi_for_q = []
@@ -227,13 +238,16 @@ class Model:
     @decorator_timer  
     def optimize(self):
         # Optimize the model
-        print("optimizing model...")
+        if not self.args.exp_mode:
+            print("optimizing model...")
         self.model.optimize()
-        print("optimizing complete")
+        if not self.args.exp_mode:
+            print("optimizing complete")
 
         # Print the solution
         if self.model.status == GRB.OPTIMAL:
-            self.print_("Optimization successfull")
+            if not self.args.exp_mode:
+                self.print_("Optimization successfull")
 
             x1_sol = np.array([self.x1[i].X for i in self.roadIDs])
             x2_sol = np.array([self.x2[i].X for i in self.roadIDs])
@@ -259,23 +273,24 @@ class Model:
                     if (i, j) in self.y and self.y[i, j].X > 0:
                         y_sol_idx.append((i, j))
 
-            print("======================= Optimization Result =======================")
-            params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
-            try:
-                values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
-            except:
-                values = [self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"]
-            print(f"---------------------- parameters --------------------------------")
-            print("    ".join("{:>6}".format(val) for val in params))
-            print("    ".join("{:>6}".format(val) for val in values))
-            print(f"number of type 1 bike lanes (x_i1 = 1): {len(x1_sol_idx)}")
-            print(f"number of type 2 bike lanes (x_i2 = 1): {len(x2_sol_idx)}")
-            print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
-            print(f"number of served intersections per road [sum(y_ij) / sum(x_i)]: {np.sum(y_sol) / (np.sum(x1_sol)+np.sum(x2_sol)):6f}")
-            print(f"---------------------- Objective Value ---------------------------")
-            print(f"Obj val:         {'{:>15}'.format(self.model.obj_val)}")
-            print(f"Road Utility:    {'{:>15}'.format(self.roadUtility.getValue())}")
-            print(f"Intersection Utility:    {'{:>15}'.format(self.intersectionUtility.getValue())}")
+            if not self.args.exp_mode:
+                print("======================= Optimization Result =======================")
+                params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
+                try:
+                    values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
+                except:
+                    values = [self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"]
+                print(f"---------------------- parameters --------------------------------")
+                print("    ".join("{:>6}".format(val) for val in params))
+                print("    ".join("{:>6}".format(val) for val in values))
+                print(f"number of type 1 bike lanes (x_i1 = 1): {np.sum(x1_sol)}")
+                print(f"number of type 2 bike lanes (x_i2 = 1): {np.sum(x2_sol)}")
+                print(f"number of served intersections (y_ij = 1): {np.sum(y_sol)}")
+                print(f"number of served intersections per road [sum(y_ij) / sum(x_i)]: {np.sum(y_sol) / (np.sum(x1_sol)+np.sum(x2_sol)):6f}")
+                print(f"---------------------- Objective Value ---------------------------")
+                print(f"Obj val:         {'{:>15}'.format(self.model.obj_val)}")
+                print(f"Road Utility:    {'{:>15}'.format(self.roadUtility.getValue())}")
+                print(f"Intersection Utility:    {'{:>15}'.format(self.intersectionUtility.getValue())}")
 
             
 
@@ -306,6 +321,9 @@ class Model:
         result_gdf.to_parquet(f"solver/output/{name}/roads_sol.parquet")
         self.sol_gdf = result_gdf
 
+        # * calculate policy similarity
+        self.pol_sim = result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
+
 
         # * saving hyperparameter, objective value, and time cost
         meta = {
@@ -329,7 +347,7 @@ class Model:
                 "num_x2": len(x2_df),
                 "num_y" : len(self.result["y"])
             },
-            "policy_similarity": result_gdf[result_gdf["has_bike_lane"] == 1]['length'].sum() / result_gdf['length'].sum() if not self.args.remove_existing else None
+            "policy_similarity": self.pol_sim
         }
 
         with open(f"solver/output/{self.args.exp_name}/meta_data.json", "w") as file:
@@ -351,7 +369,8 @@ class Model:
                     self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
                 )
             except:
-                Roads = read_parquet_("../../data/processed/road_data_adj_count_usage.parquet")
+                # Roads = read_parquet_("../../data/processed/road_data_adj_count_usage.parquet")
+                Roads = self.Roads
                 # * saving solution of roads
                 x1_df = pd.DataFrame({"roadID": self.result["x1"], "roadType": 1})
                 x2_df = pd.DataFrame({"roadID": self.result["x2"], "roadType": 2})
@@ -406,12 +425,17 @@ if __name__ == "__main__":
     print(args)
 
     # Roads = pd.read_parquet("../data/processed/road_data.parquet").iloc[20:30]
-    Roads = read_parquet_(args.road_data)
-    Roads.set_index('roadID', inplace=True)
-    A = read_parquet_(args.adj_mat)
-    MRTs = read_parquet_('../data/processed/mrt_stations.parquet')
+    try:
+        Roads = read_parquet_(args.road_data)
+        A = read_parquet_(args.adj_mat)
+    except FileNotFoundError:   # * Wally's laptap should use one . version
+        Roads = read_parquet_(args.road_data[1:])
+        A = read_parquet_(args.adj_mat[1:])
 
-    if not args.exp_name:
+    Roads.set_index('roadID', inplace=True)
+
+
+    if not args.exp_mode:
         # * filter the data by argument option "scale"
         if args.scale == "small":
             Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.75)]
@@ -432,17 +456,17 @@ if __name__ == "__main__":
             & A["road_j"].isin(Roads.index)
         ]
         
-        M = Model(args = args)
-        M.setup(A, Roads, MRTs)
+        M = Solver(args = args)
+        M.setup(A, Roads)
         result = M.optimize()
         M.save_result(time_spent = result[1])
         M.visualizeSolution()
 
     else:
-        # TODO Initialize dataframe for storing the results (30 times)
-        for _ in range(30):
-            pass
-            # TODO Link the data generation function.
+        expResults = pd.DataFrame(
+            columns = ["scenarioID", "solverObjVal", "solverTime", "solverX1num", "solverX2num", "solverYnum"]
+        )
+        for _ in tqdm(range(30)):
             """
             Generate the data with normal size (don't scale it)
             and then scale it to 'medium'!
@@ -460,26 +484,39 @@ if __name__ == "__main__":
 
             len(A) = 36590, len(Roads) = 7666. Maybe we should generate data with length like this. Not sure if the index of them should be the same.
             """
-            #! Roads, A = generateInstance()
-            #! Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
+            ExpRoads, ExpA = expDataGenerator(Roads, A)
+            ExpRoads.set_index("roadID", inplace = True)
+            ExpRoads = ExpRoads[ExpRoads['width'] >= ExpRoads["width"].quantile(0.5)]
         
 
             # * filter the data by argument option "remove_existing"
             if args.remove_existing:
-                Roads = Roads[Roads["has_bike_lane"] == 0]
+                ExpRoads = ExpRoads[ExpRoads["has_bike_lane"] == 0]
 
             #print(A.head())
             
             # filter to only consider adjacency of roads in the Roads set
-            A = A[
-                A["road_i"].isin(Roads.index) 
-                & A["road_j"].isin(Roads.index)
+            ExpA = ExpA[
+                ExpA["road_i"].isin(ExpRoads.index) 
+                & ExpA["road_j"].isin(ExpRoads.index)
             ]
             
-            M = Model(args = args)
-            M.setup(A, Roads, MRTs)
+            M = Solver(args = args)
+            M.setup(ExpA, ExpRoads)
             result = M.optimize()
             # TODO save the result to the container
-            # M.save_result(time_spent = result[1])
-            # M.visualizeSolution()
+            expResults.loc[len(expResults), :] = [
+                args.exp_name.replace("scenario_", ""),
+                M.result["obj_val"],
+                result[1],
+                len(M.result["x1"]),
+                len(M.result["x2"]),
+                len(M.result["y"])
+            ]
+
+        if args.exp_name != "default":
+            name = args.exp_name
+        else:
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        expResults.to_excel(f"./solver/experiments/{name}.xlsx")
 

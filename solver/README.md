@@ -27,4 +27,3 @@ The parameter $\tau$ (tau) is not our main focus for comparison. However, for so
 |6_np|Lower Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 10000 | 2.5  | medium | True
 |7_np|Higher Unit Cost for Level 2 Bike Lanes| 0.2 | 0.2 | 10000 | 3.5 | medium |True
 
-Experiment 4_np, 5_np are not implemented for our heuristic algorithms, as the preference toward adjacency does not change out decision process.

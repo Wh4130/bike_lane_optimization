@@ -10,6 +10,7 @@ import os
 import json
 from datetime import datetime
 from plot_utils import plot_map
+from utils import expDataGenerator
 
 
 """
@@ -24,6 +25,10 @@ For each iteration, it does:
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--exp_mode", action = "store_true",
+        help = "turn on the experiment mode"
+    )
     parser.add_argument(
         "--road_data", type = str,
         default = "./data/processed/road_data_adj_count_usage.parquet",
@@ -87,20 +92,20 @@ def decorator_timer(some_function):
     return wrapper
 
 
-class Model:
+class Heuristic:
     def __init__(self, args):
         self.args = args
         self.verbose = True
         self.result = {}
         
     @decorator_timer
-    def setup(self, Intersections, Roads, args):
+    def setup(self, Intersections, Roads):
         self.Roads = Roads
-        self.mu    = args.mu
-        self.alpha = args.alpha
-        self.B_L   = args.B_length
-        self.w     = args.w
-        self.tau   = args.tau
+        self.mu    = self.args.mu
+        self.alpha = self.args.alpha
+        self.B_L   = self.args.B_length
+        self.w     = self.args.w
+        self.tau   = self.args.tau
 
         self.status = "pending"
         
@@ -120,7 +125,8 @@ class Model:
 
 
         # * Generate a column: road utility (balanced with alpha)
-        self.Roads["Util"] = (self.Roads["length_norm"] ** self.alpha) * (self.Roads["roadDemand_m2_norm"] ** (1 - self.alpha)) 
+        self.Roads["Util"] = (self.Roads["length_norm"] ** self.alpha) * (self.Roads["roadDemand_m2_norm"] ** (1 - self.alpha))
+        self.Roads.fillna({"Util": self.Roads["Util"].mean()}, inplace = True)
 
     @decorator_timer
     def optimize(self):
@@ -150,7 +156,7 @@ class Model:
                         # * If enough, subtract B_L_use by length i * self.w, and add i to self.x2_sol
                         self.B_L_use -= self.Roads.loc[max_idx, "length"] * self.w
                         self.x2_sol_idx.append(max_idx)
-                        self.road_utility += Roads.loc[max_idx, "Util"] * self.Roads.loc[max_idx, "danger_m2_norm"]
+                        self.road_utility += float(self.Roads.loc[max_idx, "Util"] * self.Roads.loc[max_idx, "danger_m2_norm"])
                         candidates_roads.remove(max_idx)
                         selected_roads.append(max_idx)
 
@@ -166,7 +172,7 @@ class Model:
 
                         self.B_L_use -= self.Roads.loc[max_idx, "length"]
                         self.x1_sol_idx.append(max_idx)
-                        self.road_utility += self.Roads.loc[max_idx, "Util"]
+                        self.road_utility += float(self.Roads.loc[max_idx, "Util"])
                         candidates_roads.remove(max_idx)
                         selected_roads.append(max_idx)
 
@@ -181,7 +187,7 @@ class Model:
             # * If selected_roads is not empty, search among intersections where one road is selected, find the pair with the highest utility, and then select the other road in that pair.
             else:
                 max_adj_y_constr = pd.Series(selected_roads_paird).value_counts()
-                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr > 2].index.tolist()
+                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr >= 2].index.tolist()
                 XOR = ((self.Intersections["road_i"].isin(selected_roads) ^ self.Intersections["road_j"].isin(selected_roads)) 
                        & 
                        (self.Intersections["road_i"].isin(candidates_roads) ^ self.Intersections["road_j"].isin(candidates_roads))
@@ -217,7 +223,7 @@ class Model:
                         # * If enough, subtract B_L_use by length i * self.w, and add i to self.x2_sol
                         self.B_L_use -= self.Roads.loc[road_selected, "length"] * self.w
                         self.x2_sol_idx.append(road_selected)
-                        self.road_utility += self.Roads.loc[road_selected, "Util"] * self.Roads.loc[road_selected, "danger_m2_norm"]
+                        self.road_utility += float(self.Roads.loc[road_selected, "Util"] * self.Roads.loc[road_selected, "danger_m2_norm"])
                         self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
@@ -236,7 +242,7 @@ class Model:
 
                         self.B_L_use -= self.Roads.loc[road_selected, "length"]
                         self.x1_sol_idx.append(road_selected)
-                        self.road_utility += self.Roads.loc[road_selected, "Util"]
+                        self.road_utility += float(self.Roads.loc[road_selected, "Util"])
                         self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
@@ -251,7 +257,7 @@ class Model:
                     candidates_roads.remove(road_selected)
                     continue
 
-
+   
         # # * Calculate the adjacency
         # self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
         # for i in self.x_idx:
@@ -262,26 +268,24 @@ class Model:
         #             U_yij = float(self.Intersections.loc[pair, "intersection_demand_norm"])
         #             self.int_utility += U_yij
 
-
         self.total_utility = self.road_utility * self.mu + self.int_utility *  (1 - self.mu)
-        print("Optimization Successed!")
-        self.status = "succeeded"
 
-        print("======================== Heuristic Result =========================")
+        if not self.args.exp_mode:
+            print("======================== Heuristic Result =========================")
 
-        params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
-        values = [self.mu, self.alpha, self.B_L, self.w, "--", self.args.scale]
-        print(f"---------------------- parameters --------------------------------")
-        print("    ".join("{:>6}".format(val) for val in params))
-        print("    ".join("{:>6}".format(val) for val in values))
-        print(f"number of type 1 bike lanes (x_i1 = 1): {len(self.x1_sol_idx)}")
-        print(f"number of type 2 bike lanes (x_i2 = 1): {len(self.x2_sol_idx)}")
-        print(f"number of served intersections (y_ij = 1): {len(self.y_sol_idx)}")
-        print(f"---------------------- Objective Value ---------------------------")
-        print(f"Obj val:              {'{:>25.3f}'.format(self.total_utility)}")
-        print(f"Road Utility:         {'{:>25.3f}'.format(self.road_utility)}")
-        print(f"Intersection Utility: {'{:>25.3f}'.format(self.int_utility)}")
-                
+            params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
+            values = [self.mu, self.alpha, self.B_L, self.w, "--", self.args.scale]
+            print(f"---------------------- parameters --------------------------------")
+            print("    ".join("{:>6}".format(val) for val in params))
+            print("    ".join("{:>6}".format(val) for val in values))
+            print(f"number of type 1 bike lanes (x_i1 = 1): {len(self.x1_sol_idx)}")
+            print(f"number of type 2 bike lanes (x_i2 = 1): {len(self.x2_sol_idx)}")
+            print(f"number of served intersections (y_ij = 1): {len(self.y_sol_idx)}")
+            print(f"---------------------- Objective Value ---------------------------")
+            print(f"Obj val:              {'{:>25.3f}'.format(self.total_utility)}")
+            print(f"Road Utility:         {'{:>25.3f}'.format(self.road_utility)}")
+            print(f"Intersection Utility: {'{:>25.3f}'.format(self.int_utility)}")
+                    
         self.result = {"x1": self.x1_sol_idx,"x2": self.x2_sol_idx, "y": self.y_sol_idx, "obj_val": self.total_utility}
             
             
@@ -384,17 +388,17 @@ if __name__ == "__main__":
             & A["road_j"].isin(Roads.index)
         ]
         
-        M = Model(args = args)
-        M.setup(A, Roads, args)
+        M = Heuristic(args = args)
+        M.setup(A, Roads)
         result = M.optimize()
         M.save_result(time_spent = result[1])
         M.visualizeSolution()
 
     else:
-        # TODO Initialize dataframe for storing the results (30 times)
-        for _ in range(30):
-            pass
-            # TODO Link the data generation function.
+        expResults = pd.DataFrame(
+            columns = ["scenarioID", "solverObjVal", "solverTime", "solverX1num", "solverX2num", "solverYnum"]
+        )
+        for _ in tqdm(range(30)):
             """
             Generate the data with normal size (don't scale it)
             and then scale it to 'medium'!
@@ -412,28 +416,43 @@ if __name__ == "__main__":
 
             len(A) = 36590, len(Roads) = 7666. Maybe we should generate data with length like this. Not sure if the index of them should be the same.
             """
+            ExpRoads, ExpA = expDataGenerator(Roads, A)
+            ExpRoads.set_index("roadID", inplace = True)
+            ExpRoads = ExpRoads[ExpRoads['width'] >= ExpRoads["width"].quantile(0.5)]
+
             #! Roads, A = generateInstance()
-            #! Roads = Roads[Roads['width'] >= Roads["width"].quantile(0.5)]
         
 
             # * filter the data by argument option "remove_existing"
             if args.remove_existing:
-                Roads = Roads[Roads["has_bike_lane"] == 0]
+                ExpRoads = ExpRoads[ExpRoads["has_bike_lane"] == 0]
 
             #print(A.head())
             
             # filter to only consider adjacency of roads in the Roads set
-            A = A[
-                A["road_i"].isin(Roads.index) 
-                & A["road_j"].isin(Roads.index)
+            ExpA = ExpA[
+                ExpA["road_i"].isin(ExpRoads.index) 
+                & ExpA["road_j"].isin(ExpRoads.index)
             ]
             
-            M = Model(args = args)
-            M.setup(A, Roads, args)
+            M = Heuristic(args = args)
+            M.setup(ExpA, ExpRoads)
             result = M.optimize()
             # TODO save the result to the container
-            # M.save_result(time_spent = result[1])
-            # M.visualizeSolution()
+            expResults.loc[len(expResults), :] = [
+                args.exp_name.replace("scenario_", ""),
+                M.result["obj_val"],
+                result[1],
+                len(M.result["x1"]),
+                len(M.result["x2"]),
+                len(M.result["y"])
+            ]
+
+        if args.exp_name != "default":
+            name = args.exp_name
+        else:
+            name = datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(" ", "_")
+        expResults.to_excel(f"./sol_heuristic/experiments_h2/{name}.xlsx")
 
     
     

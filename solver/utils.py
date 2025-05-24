@@ -1,5 +1,6 @@
 import numpy as np
 import pyproj
+import pandas as pd
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches # Import for Patch
@@ -10,62 +11,39 @@ plt.rcParams.update({
     "font.sans-serif": "Helvetica",
 })
 
-
-def latlon_to_xy(lat, lon, ref_lat=25.03752, ref_lon=121.56368, radius=6371000.0):
-    """
-    Convert geographic coordinates (deg) to local Cartesian offsets (m)
-    relative to (ref_lat, ref_lon).
-
-    Returns
-    -------
-    dx, dy   Easting (m), northing (m); positive dx=east, dy=north.
-    """
-    # cast to ndarray for broadcasting
-    lat  = np.asanyarray(lat, dtype=float)
-    lon  = np.asanyarray(lon, dtype=float)
-
-    # --- 1. degrees → radians
-    lat_rad  = np.deg2rad(lat)
-    lon_rad  = np.deg2rad(lon)
-    ref_lat_rad = np.deg2rad(ref_lat)
-    ref_lon_rad = np.deg2rad(ref_lon)
-
-    # --- 2. small-angle planar approximation
-    dlat  = lat_rad - ref_lat_rad
-    dlon  = lon_rad - ref_lon_rad
-
-    # scale longitude by cos(average latitude)
-    mean_lat = (lat_rad + ref_lat_rad) * 0.5
-    dy = radius * dlat                        # north-south
-    dx = radius * dlon * np.cos(mean_lat)     # east-west
-
-    return dx, dy
-
-def proj_to_xy(gdf, type):
-    GDF = gdf.copy()
-    center_lat = 25.03750
-    center_lon = 121.56444
-    proj = pyproj.Proj(proj="aeqd", lat_0=center_lat, lon_0=center_lon, units="m")  # 方位等距投影
-    project = lambda lon, lat: proj(lon, lat)
-
-    if type == "road":
-        centroids = GDF.geometry.centroid
-        x, y = project(centroids.x.values, centroids.y.values)
-    else:
-        x, y = project(GDF.geometry.x.values, GDF.geometry.y.values)
-
-    GDF["x"] = x
-    GDF["y"] = y
-    return GDF
+def expDataGenerator(roadData, adjData):
+    Roads = roadData.copy()
+    Roads["roadID"] = Roads.index.tolist()
+    A = adjData.copy()
 
 
+    # * Generate Roads Data
+    Roads["roadDemand_m2_norm"] = np.random.gamma(shape = 8, scale= 0.3, size = len(Roads))
+    Roads["danger_m2_norm"] = 2 + np.random.gamma(shape = 2, scale= 0.3, size = len(Roads))
+    Roads["length"] = np.random.gamma(shape = 120, scale= 3, size = len(Roads)) - 280
+    Roads["length_norm"] = 3 + (Roads["length"] - Roads["length"].mean()) / Roads["length"].std()
 
+    # * Generate Adjacency Data
+    A["intersection_demand_norm"] = np.random.gamma(shape = 8, scale= 0.3, size = len(A))
 
-def euclidean_n2(q: tuple, road: tuple):
+    Roads = Roads[[
+        "roadID", "length", "length_norm", "width", "roadDemand_m2_norm", "danger_m2_norm", "has_bike_lane"
+    ]]
+    A = A[[
+        "road_i", "road_j", "intersection_demand_norm"
+    ]]
+    A["road_i"] = A["road_i"].astype(int)
+    A["road_j"] = A["road_j"].astype(int)
     
-    dist =  (q[0] - road[0]) ** 2 + (q[1] - road[1]) ** 2
-    
-    return dist
+    Roads["length_norm"] = Roads["length_norm"].apply(lambda x: 3 if x <= 0 else x)
+    mean_length_value = Roads['length'].mean()
+    Roads["length"] = np.where(Roads["length_norm"] == 3, mean_length_value, Roads["length"])
+
+    return Roads, A
+
+
+
+
 
 
 def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
@@ -136,3 +114,59 @@ def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
             color='black')
 
     fig.savefig(path, dpi=300, bbox_inches='tight')
+
+def latlon_to_xy(lat, lon, ref_lat=25.03752, ref_lon=121.56368, radius=6371000.0):
+    """
+    Convert geographic coordinates (deg) to local Cartesian offsets (m)
+    relative to (ref_lat, ref_lon).
+
+    Returns
+    -------
+    dx, dy   Easting (m), northing (m); positive dx=east, dy=north.
+    """
+    # cast to ndarray for broadcasting
+    lat  = np.asanyarray(lat, dtype=float)
+    lon  = np.asanyarray(lon, dtype=float)
+
+    # --- 1. degrees → radians
+    lat_rad  = np.deg2rad(lat)
+    lon_rad  = np.deg2rad(lon)
+    ref_lat_rad = np.deg2rad(ref_lat)
+    ref_lon_rad = np.deg2rad(ref_lon)
+
+    # --- 2. small-angle planar approximation
+    dlat  = lat_rad - ref_lat_rad
+    dlon  = lon_rad - ref_lon_rad
+
+    # scale longitude by cos(average latitude)
+    mean_lat = (lat_rad + ref_lat_rad) * 0.5
+    dy = radius * dlat                        # north-south
+    dx = radius * dlon * np.cos(mean_lat)     # east-west
+
+    return dx, dy
+
+def proj_to_xy(gdf, type):
+    GDF = gdf.copy()
+    center_lat = 25.03750
+    center_lon = 121.56444
+    proj = pyproj.Proj(proj="aeqd", lat_0=center_lat, lon_0=center_lon, units="m")  # 方位等距投影
+    project = lambda lon, lat: proj(lon, lat)
+
+    if type == "road":
+        centroids = GDF.geometry.centroid
+        x, y = project(centroids.x.values, centroids.y.values)
+    else:
+        x, y = project(GDF.geometry.x.values, GDF.geometry.y.values)
+
+    GDF["x"] = x
+    GDF["y"] = y
+    return GDF
+
+
+
+
+def euclidean_n2(q: tuple, road: tuple):
+    
+    dist =  (q[0] - road[0]) ** 2 + (q[1] - road[1]) ** 2
+    
+    return dist
