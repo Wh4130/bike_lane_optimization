@@ -50,6 +50,11 @@ def parse_args():
         help = "parameter alpha (importance of road length over road cycling demand)"
     )
     parser.add_argument(
+        "--d", type = int,
+        default = 3,
+        help = "parameter d (maximum degree constr)"
+    )
+    parser.add_argument(
         "--tau", type = float,
         default = 300,
         help = "parameter tau (threshold of MRT station coverage radius)"
@@ -105,7 +110,7 @@ class Heuristic:
         self.alpha = self.args.alpha
         self.B_L   = self.args.B_length
         self.w     = self.args.w
-        self.tau   = self.args.tau
+        self.d     = self.args.d
 
         self.status = "pending"
         
@@ -135,17 +140,64 @@ class Heuristic:
 
         candidates_roads         = self.Roads.index.tolist()
         selected_roads           = []
-        selected_roads_paird     = []
+        binding_set              = pd.Series([0] * len(candidates_roads), index = candidates_roads)
         self.B_L_use = self.B_L
+
+        
 
         while self.B_L_use > 0:
 
+            for _ in (binding_set[binding_set >= self.d]).index.tolist():
+                try:
+                    candidates_roads.remove(_)
+                except:
+                    pass
+
+            # max_adj_y_constr = pd.Series(selected_roads_paird).value_counts()
+            # max_adj_y_constr = max_adj_y_constr[max_adj_y_constr >= self.d].index.tolist()
+
             if not candidates_roads:
                 break
+
             
+            built = False
             # * If the selected_roads is empty, initialize it by the road with highest utility
             if selected_roads == []:
                 max_idx = self.Roads.loc[candidates_roads, "Util"].idxmax()
+
+                if max_idx in (binding_set[binding_set > self.d]).index.tolist():
+                    candidates_roads.remove(max_idx)
+                    continue
+
+                XOR0 = (self.Intersections["road_i"] == max_idx) ^ (self.Intersections["road_j"] == max_idx)
+                int_subset = self.Intersections.loc[XOR0, :]
+
+                partners = []
+                for _, row in int_subset.iterrows():
+                    if row["road_i"] == max_idx:
+                        partners.append(row["road_j"])
+                    elif row["road_j"] == max_idx:
+                        partners.append(row["road_i"])
+                partners = list(set(partners))
+
+                # * Check if the degree constraint is violated:
+                count = 0
+                stop_status = False
+                binding_d = False
+                for partner in partners:
+                    if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                        count += 1
+                        if partner in (binding_set[binding_set >= self.d]).index.tolist():
+                            stop_status = True
+                            break
+                    if count == self.d:
+                        binding_d = True
+                    if count > self.d:
+                        stop_status = True       # * If more than two paired roads are built, then break
+                        break
+                if stop_status:
+                    candidates_roads.remove(max_idx)
+                    continue
             
                 # * First check the degree of danger (check if it's good to buiuld level 2)
                 if self.Roads.loc[max_idx, "danger_m2_norm"] > self.w * 2.5:
@@ -159,6 +211,7 @@ class Heuristic:
                         self.road_utility += float(self.Roads.loc[max_idx, "Util"] * self.Roads.loc[max_idx, "danger_m2_norm"])
                         candidates_roads.remove(max_idx)
                         selected_roads.append(max_idx)
+                        built = True
 
                         continue # * Go to the next iteration
 
@@ -175,6 +228,7 @@ class Heuristic:
                         self.road_utility += float(self.Roads.loc[max_idx, "Util"])
                         candidates_roads.remove(max_idx)
                         selected_roads.append(max_idx)
+                        built = True
 
                     else:
                         candidates_roads.remove(max_idx)
@@ -183,19 +237,47 @@ class Heuristic:
                 else:
                     candidates_roads.remove(max_idx)
                     continue
+                if built:
+                    for _, road in self.Intersections.loc[(self.Intersections["road_i"] == max_idx), :].iterrows():
+                        binding_set[road["road_j"]] += 1
+                    for _, road in self.Intersections.loc[(self.Intersections["road_j"] == max_idx), :].iterrows():
+                        binding_set[road["road_i"]] += 1
+                    for partner in partners:
+                        if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                            pair = "(" + ", ".join([str(int(_)) for _ in sorted([partner, max_idx], reverse = False)]) + ")"
+                            self.int_utility += self.Intersections.loc[ pair, "intersection_demand_norm"]
+                            self.y_sol_idx.append(pair)
+                    if binding_d:
+                        to_remove = []
+                        for _, road in self.Intersections.loc[(self.Intersections["road_i"] == max_idx), :].iterrows():
+                            to_remove.append(road["road_j"])
+                        for _, road in self.Intersections.loc[(self.Intersections["road_j"] == max_idx), :].iterrows():
+                            to_remove.append(road["road_i"])
+                        for _ in to_remove:
+                            try:
+                                candidates_roads.remove(_)
+                            except:
+                                pass
+
+
 
             # * If selected_roads is not empty, search among intersections where one road is selected, find the pair with the highest utility, and then select the other road in that pair.
             else:
-                max_adj_y_constr = pd.Series(selected_roads_paird).value_counts()
-                max_adj_y_constr = max_adj_y_constr[max_adj_y_constr >= 2].index.tolist()
+                
+                for _ in (binding_set[binding_set >= self.d]).index.tolist():
+                    try:
+                        candidates_roads.remove(_)
+                    except:
+                        pass
                 XOR = ((self.Intersections["road_i"].isin(selected_roads) ^ self.Intersections["road_j"].isin(selected_roads)) 
                        & 
                        (self.Intersections["road_i"].isin(candidates_roads) ^ self.Intersections["road_j"].isin(candidates_roads))
                        &
-                        ~(self.Intersections["road_i"].isin(max_adj_y_constr) | self.Intersections["road_j"].isin(max_adj_y_constr))
+                        ~(self.Intersections["road_i"].isin((binding_set[binding_set >= self.d]).index.tolist()) | self.Intersections["road_j"].isin((binding_set[binding_set >= self.d]).index.tolist()))
                        )
 
                 int_subset = self.Intersections.loc[XOR, :]
+                
 
                 if len(int_subset) == 0:
                     selected_roads = []
@@ -207,13 +289,40 @@ class Heuristic:
 
                 if int_subset.loc[int_subset_idxmax, "road_i"].astype(int) in selected_roads:
                     road_selected = int_subset.loc[int_subset_idxmax, "road_j"]
-                    road_pair_selected = int_subset.loc[int_subset_idxmax, "road_i"]
                 else:
                     road_selected = int_subset.loc[int_subset_idxmax, "road_i"]
-                    road_pair_selected = int_subset.loc[int_subset_idxmax, "road_j"]
+
+                partners = []
+                for _, row in int_subset.iterrows():
+                    if row["road_i"] == road_selected:
+                        partners.append(row["road_j"])
+                    elif row["road_j"] == road_selected:
+                        partners.append(row["road_i"])
+                partners = list(set(partners))
+
+                # * Check if the degree constraint is violated:
+                count = 0
+                stop_status = False
+                binding_d = False
+                for partner in partners:
+                    if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                        count += 1
+                        if partner in (binding_set[binding_set >= self.d]).index.tolist():
+                            stop_status = True
+                            break
+                    if count == self.d:
+                        binding_d = True
+                    if count > self.d:
+                        stop_status = True       # * If more than two paired roads are built, then break
+                        break
+                if stop_status:
+                
+                    candidates_roads.remove(road_selected)
+                    continue
+                    
 
 
-
+                built = False
                 # * First check the degree of danger (check if it's good to buiuld level 2)
                 if self.Roads.loc[road_selected, "danger_m2_norm"] > self.w * 2.5:
 
@@ -224,11 +333,10 @@ class Heuristic:
                         self.B_L_use -= self.Roads.loc[road_selected, "length"] * self.w
                         self.x2_sol_idx.append(road_selected)
                         self.road_utility += float(self.Roads.loc[road_selected, "Util"] * self.Roads.loc[road_selected, "danger_m2_norm"])
-                        self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
+                        # self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
-                        selected_roads_paird.append(road_pair_selected)
-                        self.y_sol_idx.append(int_subset_idxmax)
+                        built = True
 
                         continue # * Go to the next iteration
 
@@ -243,11 +351,10 @@ class Heuristic:
                         self.B_L_use -= self.Roads.loc[road_selected, "length"]
                         self.x1_sol_idx.append(road_selected)
                         self.road_utility += float(self.Roads.loc[road_selected, "Util"])
-                        self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
+                        # self.int_utility += self.Intersections.loc[int_subset_idxmax, "intersection_demand_norm"]
                         candidates_roads.remove(road_selected)
                         selected_roads.append(road_selected)
-                        selected_roads_paird.append(road_pair_selected)
-                        self.y_sol_idx.append(int_subset_idxmax)
+                        built = True
 
                     else:
                         candidates_roads.remove(road_selected)
@@ -257,6 +364,27 @@ class Heuristic:
                     candidates_roads.remove(road_selected)
                     continue
 
+                if built:
+                    for _, road in self.Intersections.loc[(self.Intersections["road_i"] == road_selected), :].iterrows():
+                        binding_set[road['road_j']] += 1
+                    for _, road in self.Intersections.loc[(self.Intersections["road_j"] == road_selected), :].iterrows():
+                        binding_set[road['road_i']] += 1
+                    for partner in partners:
+                        if partner in list(set(self.x1_sol_idx + self.x2_sol_idx)):
+                            pair = "(" + ", ".join([str(int(_)) for _ in sorted([partner, road_selected], reverse = False)]) + ")"
+                            self.int_utility += self.Intersections.loc[ pair, "intersection_demand_norm"]
+                            self.y_sol_idx.append(pair)
+                    if binding_d:
+                        to_remove = []
+                        for _, road in self.Intersections.loc[(self.Intersections["road_i"] == road_selected), :].iterrows():
+                            to_remove.append(road["road_j"])
+                        for _, road in self.Intersections.loc[(self.Intersections["road_j"] == road_selected), :].iterrows():
+                            to_remove.append(road["road_i"])
+                        for _ in to_remove:
+                            try:
+                                candidates_roads.remove(_)
+                            except:
+                                pass
    
         # # * Calculate the adjacency
         # self.x_idx = list(set(self.x1_sol_idx + self.x2_sol_idx))
@@ -273,8 +401,8 @@ class Heuristic:
         if not self.args.exp_mode:
             print("======================== Heuristic Result =========================")
 
-            params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
-            values = [self.mu, self.alpha, self.B_L, self.w, "--", self.args.scale]
+            params = ["mu", "alpha", "B_L", "w", "d", "scale"]
+            values = [self.mu, self.alpha, self.B_L, self.w, self.d, self.args.scale]
             print(f"---------------------- parameters --------------------------------")
             print("    ".join("{:>6}".format(val) for val in params))
             print("    ".join("{:>6}".format(val) for val in values))
@@ -287,9 +415,10 @@ class Heuristic:
             print(f"Intersection Utility: {'{:>25.3f}'.format(self.int_utility)}")
                     
         self.result = {"x1": self.x1_sol_idx,"x2": self.x2_sol_idx, "y": self.y_sol_idx, "obj_val": self.total_utility}
-            
-            
-            
+        # ls = []
+        # for pair in self.y_sol_idx:
+        #     ls += pair.replace("(", "").replace(")", "").replace(" ", "").split(",")
+
     def save_result(self, time_spent):
         # * making directory
         if self.args.exp_name != "default":
@@ -319,6 +448,7 @@ class Heuristic:
                 "alpha": self.alpha,
                 "B_L": self.B_L,
                 "w": self.w,
+                "d": self.d,
                 "scale": self.args.scale
             },
             "obj_val": {
@@ -353,7 +483,7 @@ class Heuristic:
             "heuristic",
             self.args.exp_name,
             Roads, self.sol_gdf,
-            self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+            self.mu, self.alpha, self.B_L, self.w, self.d, self.args.scale
         )
         print("Visualization done!")
     

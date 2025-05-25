@@ -4,6 +4,7 @@
   "alpha": 0.2,
   "B_L": 10000.0,
   "w": 3,
+  "d": 3,
   "scale": "medium"
  },
  "obj_val": {
@@ -13,7 +14,7 @@
   "road_util_prop": 1.2927382367824245,
   "int_util_prop": 0.9268154408043939
  },
- "cal_time_sec": 0.06695795059204102,
+ "cal_time_sec": 0.11984586715698242,
  "result_description": {
   "num_x1": 78,
   "num_x2": 0,

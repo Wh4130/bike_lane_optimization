@@ -3,21 +3,22 @@
   "mu": 0.2,
   "alpha": 0.2,
   "B_L": 50000,
-  "w": 2.5,
+  "w": 3,
+  "d": 2,
   "scale": "medium"
  },
  "obj_val": {
-  "total_utility": 2877.096842192499,
-  "road_utility": 3070.617057794769,
-  "int_utility": 2828.716788291931,
-  "road_util_prop": 1.0672623224787934,
-  "int_util_prop": 0.9831844193803015
+  "total_utility": 1954.5721713982211,
+  "road_utility": 2335.1520762255727,
+  "int_utility": 1859.4271951913834,
+  "road_util_prop": 1.1947126386001394,
+  "int_util_prop": 0.9513218403499653
  },
- "cal_time_sec": 2.1470108032226562,
+ "cal_time_sec": 21.30726408958435,
  "result_description": {
-  "num_x1": 539,
-  "num_x2": 19,
-  "num_y": 557
+  "num_x1": 453,
+  "num_x2": 12,
+  "num_y": 412
  },
- "policy_similarity": 0.6300441328572195
+ "policy_similarity": 0.5009489745692269
 }

@@ -52,6 +52,11 @@ def parse_args():
         help = "parameter tau (threshold of MRT station coverage radius)"
     )
     parser.add_argument(
+        "--d", type = int,
+        default = 3,
+        help = "parameter d (maximum degree)"
+    )
+    parser.add_argument(
         "--mu", type = float,
         default = 0.2,
         help = "parameter mu (importance of total road utility over adjacency utility)"

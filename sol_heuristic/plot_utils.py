@@ -7,7 +7,7 @@ plt.rcParams.update({
     "font.sans-serif": "Helvetica",
 })
 
-def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
+def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, d, scale):
 
     assert alg in ["naive", "heuristic"], "'alg' should be either naive or heuristic"
 
@@ -64,7 +64,7 @@ def plot_map(alg, name, road_gdf, sol, mu, alpha, B_L, w, tau, scale):
 
 
     text = f"Road Segments filled with Gray Slash / refer to already existing bike lanes" 
-    params = rf"$$\mu = {mu};   \alpha = {alpha};   B^L = {B_L};   w = {w};   \tau = {tau};   scale = {scale}$$"
+    params = rf"$$\mu = {mu};   \alpha = {alpha};   B^L = {B_L};   w = {w};   d = {d};   scale = {scale}$$"
     ax.text(0.5, 0.98, text,
             horizontalalignment='center', 
             verticalalignment='top',      

@@ -5,7 +5,7 @@ def arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--alg", type = str, choices = ["naive", "heu", "both"],
-        default = "naive",
+        default = "both",
         help = "type of algorithm"
     )
     args =  parser.parse_args()
@@ -19,15 +19,15 @@ Commands1 = [
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_3", "--B_length", "100000"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_4", "--mu", "0.5"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_5", "--mu", "0.8"],
-    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6", "--w", "2.5"],
-    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7", "--w", "3.5"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6", "--d", "2"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7", "--d", "4"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_1_np", "--B_length", "5000", "--remove_existing"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_2_np", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_3_np", "--B_length", "15000", "--remove_existing"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_4_np", "--mu", "0.5", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_5_np", "--mu", "0.8", "--remove_existing", "--B_length", "10000"],
-    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6_np", "--w", "2.5", "--remove_existing", "--B_length", "10000"],
-    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7_np", "--w", "3.5", "--remove_existing", "--B_length", "10000"]
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_6_np", "--d", "2", "--remove_existing", "--B_length", "10000"],
+    ["python3", "sol_heuristic/heuristic_1.py", "--exp_name", "scenario_7_np", "--d", "4", "--remove_existing", "--B_length", "10000"]
 ]
 Commands2 = [
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_1", "--B_length", "25000"],
@@ -35,15 +35,15 @@ Commands2 = [
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_3", "--B_length", "100000"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_4", "--mu", "0.5"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_5", "--mu", "0.8"],
-    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_6", "--w", "2.5"],
-    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_7", "--w", "3.5"],
+    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_6", "--d", "2"],
+    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_7", "--d", "4"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_1_np", "--B_length", "5000", "--remove_existing"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_2_np", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_3_np", "--B_length", "15000", "--remove_existing"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_4_np", "--mu", "0.5", "--remove_existing", "--B_length", "10000"],
     ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_5_np", "--mu", "0.8", "--remove_existing", "--B_length", "10000"],
-    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_6_np", "--w", "2.5", "--remove_existing", "--B_length", "10000"],
-    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_7_np", "--w", "3.5", "--remove_existing", "--B_length", "10000"]
+    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_6_np", "--d", "2", "--remove_existing", "--B_length", "10000"],
+    ["python3", "sol_heuristic/heuristic_2.py", "--exp_name", "scenario_7_np", "--d", "4", "--remove_existing", "--B_length", "10000"]
 ]
 
 if __name__ == "__main__":

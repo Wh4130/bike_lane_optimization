@@ -46,7 +46,7 @@ def expDataGenerator(roadData, adjData):
 
 
 
-def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
+def plot_map(name, road_gdf, sol, mu, alpha, B_L, w,  d, scale, path=None):
 
     if path == None:
         path = f"solver/output/{name}/{name}_result.png"
@@ -58,9 +58,10 @@ def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
 
     fig, ax = plt.subplots(1, 1, figsize = (15, 15))
     road_gdf.plot(color = "lightgray", ax = ax, alpha = 0.4)
-
-    road_gdf[road_gdf["has_bike_lane"] == 1].plot(color = "lightgray", ax = ax, alpha = 0.8, label = "existing lanes")
-
+    try:
+        road_gdf[road_gdf["has_bike_lane"] == 1].plot(color = "lightgray", ax = ax, alpha = 0.8, label = "existing lanes")
+    except:
+        pass
     try:
         sol[(sol["has_bike_lane"] == 1) & (sol["roadType"] == 1)].plot(color = "#3898EA", ax = ax, edgecolor=None, hatch = "///")
     except:
@@ -99,7 +100,7 @@ def plot_map(name, road_gdf, sol, mu, alpha, B_L, w, tau, scale, path=None):
 
 
     text = f"Road Segments filled with Gray Slash / refer to already existing bike lanes" 
-    params = rf"$$\mu = {mu:1.2f};   \alpha = {alpha};   B^L = {B_L};   w = {w};   \tau = {tau};   scale = {scale}$$"
+    params = rf"$$\mu = {mu:1.2f};   \alpha = {alpha};   B^L = {B_L};   w = {w};   d = {d};   scale = {scale}$$"
     ax.text(0.5, 0.98, text,
             horizontalalignment='center', 
             verticalalignment='top',      

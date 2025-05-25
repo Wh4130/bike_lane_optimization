@@ -62,6 +62,11 @@ def parse_args():
         help = "parameter alpha (importance of road length over road cycling demand)"
     )
     parser.add_argument(
+        "--d", type = int,
+        default = 3,
+        help = "parameter d (maximum degree constr)"
+    )
+    parser.add_argument(
         "--tau", type = float,
         default = 300,
         help = "parameter tau (threshold of MRT station coverage radius)"
@@ -112,7 +117,7 @@ def read_parquet_(filename):
     try:
         return gpd.read_parquet(filename)
     except:
-        return gpd.read_parquet(filename)[1:]
+        return gpd.read_parquet(filename[1:])
 
 
 class Solver:
@@ -132,6 +137,7 @@ class Solver:
             self.B_L   = self.args.B_length
             self.w     = self.args.w
             self.tau   = self.args.tau
+            self.d     = self.args.d
             
         except Exception as e:
             print(e)
@@ -213,7 +219,7 @@ class Solver:
         # at most two reads connected to each intersection:
         for i in Intersections['road_i'].unique():
             # find all road_j’s paired with this i
-            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) <= 2)
+            self.model.addConstr(gp.quicksum(self.y[i, j] for j in Intersections.loc[Intersections['road_i'] == i, 'road_j']) + gp.quicksum(self.y[j, i] for j in Intersections.loc[Intersections['road_j'] == i, 'road_i'])<= self.d)
 
 
         # area coverage constraint
@@ -275,11 +281,11 @@ class Solver:
 
             if not self.args.exp_mode:
                 print("======================= Optimization Result =======================")
-                params = ["mu", "alpha", "B_L", "w", "tau", "scale"]
+                params = ["mu", "alpha", "B_L", "w", "d", "scale"]
                 try:
-                    values = [self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale]
+                    values = [self.mu, self.alpha, self.B_L, self.w, self.d, self.args.scale]
                 except:
-                    values = [self.mu, self.alpha, self.B_L, self.w, self.tau, "custom"]
+                    values = [self.mu, self.alpha, self.B_L, self.w, self.d, "custom"]
                 print(f"---------------------- parameters --------------------------------")
                 print("    ".join("{:>6}".format(val) for val in params))
                 print("    ".join("{:>6}".format(val) for val in values))
@@ -332,6 +338,7 @@ class Solver:
                 "alpha": self.alpha,
                 "B_L": self.B_L,
                 "w": self.w,
+                "d": self.d,
                 "scale": self.args.scale
             },
             "obj_val": {
@@ -362,11 +369,12 @@ class Solver:
     def visualizeSolution(self, path=None):
         if self.model.status == GRB.OPTIMAL:    
             try:
-                Roads = read_parquet_(self.args.road_data)
+                # Roads = read_parquet_(self.args.road_data)
+                Roads = self.Roads
                 plot_map(
                     self.args.exp_name,
                     Roads, self.sol_gdf,
-                    self.mu, self.alpha, self.B_L, self.w, self.tau, self.args.scale
+                    self.mu, self.alpha, self.B_L, self.w, self.d, self.args.scale
                 )
             except:
                 # Roads = read_parquet_("../../data/processed/road_data_adj_count_usage.parquet")

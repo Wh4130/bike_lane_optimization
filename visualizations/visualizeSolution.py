@@ -1,6 +1,13 @@
 import geopandas as gpd
 from pathlib import Path 
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches # Import for Patch
+import geopandas as gpd
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "sans-serif",
+    "font.sans-serif": "Helvetica",
+})
 
 from matplotlib.patches import Patch
 

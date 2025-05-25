@@ -4,20 +4,21 @@
   "alpha": 0.2,
   "B_L": 50000,
   "w": 3,
+  "d": 3,
   "scale": "medium"
  },
  "obj_val": {
-  "total_utility": 2884.2361457585966,
-  "road_utility": 2892.1769950091434,
-  "int_utility": 2852.4727487564087,
-  "road_util_prop": 1.0027531897005812,
-  "int_util_prop": 0.9889872411976747
+  "total_utility": 2977.0403521904555,
+  "road_utility": 2914.938816652845,
+  "int_utility": 3225.4464943408966,
+  "road_util_prop": 0.9791398408516979,
+  "int_util_prop": 1.0834406365932086
  },
- "cal_time_sec": 1.6890039443969727,
+ "cal_time_sec": 21.809263706207275,
  "result_description": {
-  "num_x1": 552,
-  "num_x2": 11,
-  "num_y": 562
+  "num_x1": 551,
+  "num_x2": 14,
+  "num_y": 679
  },
- "policy_similarity": 0.626267582741858
+ "policy_similarity": 0.6073492189398941
 }
